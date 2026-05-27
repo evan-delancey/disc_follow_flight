@@ -1,0 +1,10 @@
+{
+  "name": "Disc Follow Flight",
+  "short_name": "Disc Trace",
+  "description": "Trace your disc golf flight path frame by frame",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": []
+}

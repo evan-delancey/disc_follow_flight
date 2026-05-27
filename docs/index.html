@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="theme-color" content="#111">
+  <title>Disc Follow Flight</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+
+  <!-- ── Upload screen ── -->
+  <div id="upload-screen" class="screen active">
+    <div class="upload-content">
+      <h1>Disc Follow Flight</h1>
+      <p class="tagline">Trace your disc's flight path frame by frame</p>
+      <label class="upload-btn" for="video-input">Choose Video</label>
+      <input type="file" id="video-input" accept="video/*">
+      <p class="hint">Pick a throw from your camera roll</p>
+    </div>
+  </div>
+
+  <!-- ── Editor screen ── -->
+  <div id="editor-screen" class="screen">
+
+    <div id="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div id="seek-overlay" hidden>
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <div id="controls">
+
+      <div id="top-row">
+        <span id="frame-label">Frame 0 / 0</span>
+        <span id="fps-toggle" title="Tap to toggle frame rate">30 fps</span>
+        <span id="mark-count">0 marks</span>
+      </div>
+
+      <input type="range" id="scrubber" min="0" max="0" value="0" step="1">
+
+      <div id="nav-row">
+        <button class="nav-btn" id="btn-m10">−10</button>
+        <button class="nav-btn large" id="btn-prev">&#9664;</button>
+        <button class="nav-btn large" id="btn-next">&#9654;</button>
+        <button class="nav-btn" id="btn-p10">+10</button>
+      </div>
+
+      <div id="action-row">
+        <button class="action-btn" id="btn-undo">Undo</button>
+        <button class="action-btn" id="btn-clear">Clear All</button>
+        <button class="action-btn primary" id="btn-save">Save Trace</button>
+      </div>
+
+      <div id="status">Tap on the disc to mark its position</div>
+
+    </div>
+  </div>
+
+  <!-- Hidden video element used only for frame decoding -->
+  <video id="video" preload="auto" playsinline muted></video>
+
+  <script src="app.js"></script>
+</body>
+</html>
