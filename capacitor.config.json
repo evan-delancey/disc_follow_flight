@@ -1,0 +1,11 @@
+{
+  "appId": "com.evandel.discfollowflight",
+  "appName": "Disc Follow Flight",
+  "webDir": "docs",
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#111111"
+    }
+  }
+}

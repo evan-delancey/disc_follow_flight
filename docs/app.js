@@ -272,26 +272,52 @@ async function saveTraceImage() {
   // Draw full trace (no markers) on the release frame
   ctx.drawImage(video, 0, 0);
   renderTrace(lastFrame, false);
+  const dataUrl = canvas.toDataURL('image/png');
 
-  canvas.toBlob(async blob => {
-    // Restore the view the user was on
-    goToFrame(savedFrame);
+  // Restore the view the user was on
+  goToFrame(savedFrame);
 
-    const file = new File([blob], 'disc_trace.png', { type: 'image/png' });
+  if (window.Capacitor) {
+    // Running inside the native iOS app — use Capacitor plugins
+    await shareViaCapacitor(dataUrl);
+  } else {
+    // Running in browser (web / GitHub Pages)
+    await shareViaWeb(dataUrl);
+  }
+}
 
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: 'Disc Trace' });
-      } catch (err) {
-        if (err.name !== 'AbortError') console.error(err);
-      }
-    } else {
-      // Desktop fallback: trigger a download
-      const url = URL.createObjectURL(blob);
-      const a   = Object.assign(document.createElement('a'),
-                    { href: url, download: 'disc_trace.png' });
-      a.click();
-      URL.revokeObjectURL(url);
+async function shareViaCapacitor(dataUrl) {
+  const { Filesystem, Share } = window.Capacitor.Plugins;
+  const base64 = dataUrl.split(',')[1];
+  const fileName = `disc_trace_${Date.now()}.png`;
+
+  try {
+    await Filesystem.writeFile({
+      path: fileName,
+      data: base64,
+      directory: 'CACHE',
+    });
+    const { uri } = await Filesystem.getUri({ path: fileName, directory: 'CACHE' });
+    await Share.share({ title: 'Disc Trace', files: [uri] });
+  } catch (err) {
+    if (err.name !== 'AbortError') console.error(err);
+  }
+}
+
+async function shareViaWeb(dataUrl) {
+  const blob = await (await fetch(dataUrl)).blob();
+  const file = new File([blob], 'disc_trace.png', { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'Disc Trace' });
+    } catch (err) {
+      if (err.name !== 'AbortError') console.error(err);
     }
-  }, 'image/png');
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'),
+                { href: url, download: 'disc_trace.png' });
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 }
