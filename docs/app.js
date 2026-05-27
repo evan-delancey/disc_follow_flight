@@ -106,7 +106,7 @@ document.getElementById('video-input').addEventListener('change', e => {
   video.load();
 });
 
-video.addEventListener('loadedmetadata', () => {
+video.addEventListener('loadeddata', () => {
   canvas.width  = video.videoWidth;
   canvas.height = video.videoHeight;
   totalFrames   = Math.max(1, Math.round(video.duration * fps));
