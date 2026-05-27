@@ -272,7 +272,8 @@ canvas.addEventListener('touchend', e => {
   e.preventDefault();
   const touch = [...e.changedTouches].find(t => t.identifier === activeTouchId);
   if (touch) {
-    markFromEvent(touch.clientX, touch.clientY);
+    // Mark at the crosshair centre, not the finger — crosshair is 80px above touch point
+    markFromEvent(touch.clientX, touch.clientY - 80);
     hideCrosshair();
     activeTouchId = null;
   }
