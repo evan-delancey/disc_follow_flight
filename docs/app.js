@@ -267,6 +267,8 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   if (confirm('Remove all marks?')) { tracker.clear(); drawCurrentFrame(); updateTopRow(); }
 });
 document.getElementById('btn-save').addEventListener('click', saveTraceImage);
+document.getElementById('btn-export').addEventListener('click', exportVideo);
+document.getElementById('btn-cancel-export').addEventListener('click', () => { exportCancelled = true; });
 
 // FPS toggle (30 ↔ 60)
 document.getElementById('fps-toggle').addEventListener('click', () => {
@@ -367,4 +369,152 @@ async function shareViaWeb(dataUrl) {
     a.click();
     URL.revokeObjectURL(url);
   }
+}
+
+// ── Video export ──────────────────────────────────────────────────────────────
+
+let exportCancelled = false;
+
+function getSupportedMimeType() {
+  const candidates = [
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4;codecs=avc1',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  return candidates.find(t => MediaRecorder.isTypeSupported(t)) ?? null;
+}
+
+async function seekVideoTo(frameIdx) {
+  const targetTime = frameIdx / fps;
+  if (Math.abs(video.currentTime - targetTime) < 0.001) return;
+  return new Promise(resolve => {
+    const done = () => { video.removeEventListener('seeked', done); resolve(); };
+    video.addEventListener('seeked', done);
+    video.currentTime = targetTime;
+  });
+}
+
+async function exportVideo() {
+  if (tracker.keyframes.size < 2) {
+    alert('Mark at least 2 positions before exporting.');
+    return;
+  }
+
+  if (!window.MediaRecorder) {
+    alert('Video export is not supported in this browser. Try Safari 14.3+ or Chrome.');
+    return;
+  }
+
+  const mimeType = getSupportedMimeType();
+  if (!mimeType) {
+    alert('No supported video codec found in this browser.');
+    return;
+  }
+
+  const ext        = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
+  const fileName   = `disc_trace.${ext}`;
+  const savedFrame = currentFrame;
+
+  // UI refs
+  const overlay  = document.getElementById('export-overlay');
+  const statusEl = document.getElementById('export-status');
+  const fill     = document.getElementById('export-bar-fill');
+  const pctEl    = document.getElementById('export-pct');
+
+  exportCancelled = false;
+  overlay.hidden  = false;
+  statusEl.textContent = 'Starting export…';
+  fill.style.width = '0%';
+  pctEl.textContent = '0%';
+
+  // Disable export button while running
+  const exportBtn = document.getElementById('btn-export');
+  exportBtn.disabled = true;
+
+  const chunks  = [];
+  let recorder;
+
+  try {
+    const stream = canvas.captureStream(fps);
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    await new Promise(resolve => { recorder.onstart = resolve; recorder.start(200); });
+    statusEl.textContent = `Exporting ${totalFrames} frames…`;
+
+    for (let f = 0; f < totalFrames; f++) {
+      if (exportCancelled) break;
+
+      await seekVideoTo(f);
+      ctx.drawImage(video, 0, 0);
+      renderTrace(f, false);
+
+      const progress = (f + 1) / totalFrames;
+      fill.style.width  = `${progress * 100}%`;
+      pctEl.textContent = `${Math.round(progress * 100)}%`;
+
+      // Pace playback so MediaRecorder captures each frame at the right rate
+      await new Promise(resolve => setTimeout(resolve, 1000 / fps));
+    }
+
+    recorder.stop();
+    await new Promise(resolve => { recorder.onstop = resolve; });
+
+    if (!exportCancelled) {
+      statusEl.textContent = 'Sharing…';
+      const blob = new Blob(chunks, { type: mimeType });
+      await shareFile(blob, fileName, mimeType);
+    }
+
+  } catch (err) {
+    if (!exportCancelled) {
+      console.error(err);
+      alert(`Export failed: ${err.message}`);
+    }
+  } finally {
+    overlay.hidden     = true;
+    exportBtn.disabled = false;
+    goToFrame(savedFrame);
+  }
+}
+
+async function shareFile(blob, fileName, mimeType) {
+  if (window.Capacitor) {
+    // Native iOS — save to cache then open share sheet (includes Instagram)
+    const { Filesystem, Share } = window.Capacitor.Plugins;
+    const base64 = await blobToBase64(blob);
+    await Filesystem.writeFile({ path: fileName, data: base64, directory: 'CACHE' });
+    const { uri } = await Filesystem.getUri({ path: fileName, directory: 'CACHE' });
+    await Share.share({ title: 'Disc Trace Video', files: [uri] });
+  } else {
+    // Web — use Web Share API (iOS Safari opens share sheet inc. Instagram)
+    // or fall back to a download link
+    const file = new File([blob], fileName, { type: mimeType });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Disc Trace Video' }); }
+      catch (e) { if (e.name !== 'AbortError') triggerDownload(blob, fileName); }
+    } else {
+      triggerDownload(blob, fileName);
+    }
+  }
+}
+
+function triggerDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: fileName });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }

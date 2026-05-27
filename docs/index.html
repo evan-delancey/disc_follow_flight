@@ -50,14 +50,28 @@
 
       <div id="action-row">
         <button class="action-btn" id="btn-undo">Undo</button>
-        <button class="action-btn" id="btn-clear">Clear All</button>
-        <button class="action-btn primary" id="btn-save">Save Trace</button>
+        <button class="action-btn" id="btn-clear">Clear</button>
+      </div>
+
+      <div id="export-row">
+        <button class="action-btn primary" id="btn-save">Save Image</button>
+        <button class="action-btn export" id="btn-export">Export Video</button>
       </div>
 
       <div id="gradient-row"></div>
 
       <div id="status">Tap on the disc to mark its position</div>
 
+    </div>
+  </div>
+
+  <!-- Export progress overlay -->
+  <div id="export-overlay" hidden>
+    <div id="export-card">
+      <p id="export-status">Exporting…</p>
+      <div id="export-bar-wrap"><div id="export-bar-fill"></div></div>
+      <p id="export-pct">0%</p>
+      <button id="btn-cancel-export">Cancel</button>
     </div>
   </div>
 

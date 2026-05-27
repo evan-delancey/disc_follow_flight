@@ -224,7 +224,8 @@ html, body {
 .nav-btn:active { background: var(--border); }
 
 /* Action buttons */
-#action-row { display: flex; gap: 8px; }
+#action-row  { display: flex; gap: 8px; }
+#export-row  { display: flex; gap: 8px; }
 
 .action-btn {
   flex: 1;
@@ -238,10 +239,11 @@ html, body {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   box-shadow: var(--shadow-sm);
-  transition: background 0.1s;
+  transition: background 0.1s, opacity 0.1s;
 }
 
-.action-btn:active { background: var(--border); }
+.action-btn:active  { background: var(--border); }
+.action-btn:disabled { opacity: 0.4; pointer-events: none; }
 
 .action-btn.primary {
   background: var(--orange);
@@ -255,6 +257,82 @@ html, body {
   background: var(--orange-dark);
   border-color: var(--orange-dark);
 }
+
+.action-btn.export {
+  background: var(--surface);
+  color: var(--orange);
+  font-weight: 600;
+  border-color: var(--orange);
+}
+
+.action-btn.export:active { background: var(--orange-light); }
+
+/* Export progress overlay */
+#export-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+#export-overlay[hidden] { display: none; }
+
+#export-card {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 28px 28px 22px;
+  width: min(320px, 88vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-shadow: var(--shadow-md);
+}
+
+#export-status {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#export-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#export-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--orange);
+  border-radius: 4px;
+  transition: width 0.1s linear;
+}
+
+#export-pct {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
+}
+
+#btn-cancel-export {
+  margin-top: 4px;
+  padding: 8px 24px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#btn-cancel-export:active { background: var(--border); }
 
 /* Gradient swatches */
 #gradient-row {
