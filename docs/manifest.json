@@ -1,7 +1,7 @@
 {
-  "name": "Disc Follow Flight",
-  "short_name": "Disc Trace",
-  "description": "Trace your disc golf flight path frame by frame",
+  "name": "DiscTrail",
+  "short_name": "DiscTrail",
+  "description": "Map every shot. Master your flight.",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#111111",

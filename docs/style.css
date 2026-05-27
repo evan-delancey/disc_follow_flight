@@ -57,10 +57,31 @@ html, body {
   width: 90%;
 }
 
+.brand-icon {
+  width: 80px;
+  height: auto;
+}
+
+.brand-accent { color: var(--orange); }
+
 .upload-content h1 {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--text);
+}
+
+#brand-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 2px;
+}
+
+.wordmark {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
   color: var(--text);
 }
 
