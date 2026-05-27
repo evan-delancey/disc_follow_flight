@@ -419,49 +419,86 @@ async function exportVideo() {
   const fileName   = `disc_trace.${ext}`;
   const savedFrame = currentFrame;
 
-  // UI refs
-  const overlay  = document.getElementById('export-overlay');
-  const statusEl = document.getElementById('export-status');
-  const fill     = document.getElementById('export-bar-fill');
-  const pctEl    = document.getElementById('export-pct');
+  const overlay   = document.getElementById('export-overlay');
+  const statusEl  = document.getElementById('export-status');
+  const fill      = document.getElementById('export-bar-fill');
+  const pctEl     = document.getElementById('export-pct');
+  const exportBtn = document.getElementById('btn-export');
 
   exportCancelled = false;
   overlay.hidden  = false;
   statusEl.textContent = 'Starting export…';
-  fill.style.width = '0%';
+  fill.style.width  = '0%';
   pctEl.textContent = '0%';
-
-  // Disable export button while running
-  const exportBtn = document.getElementById('btn-export');
   exportBtn.disabled = true;
 
-  const chunks  = [];
-  let recorder;
+  const sorted    = [...tracker.keyframes.keys()].sort((a, b) => a - b);
+  const lastFrame = sorted[sorted.length - 1];
+  const endTime   = (lastFrame + 1) / fps;
+  const chunks    = [];
+  let rafId       = null;
 
   try {
-    const stream = canvas.captureStream(fps);
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
+    // Seek to the beginning before recording starts
+    await seekVideoTo(0);
+
+    const stream   = canvas.captureStream(fps);
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
     recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.onerror = e => { throw e.error ?? new Error('MediaRecorder error'); };
     recorder.start(100);
 
-    // Let the recorder initialise before we start drawing frames
+    // Let the recorder initialise
     await new Promise(resolve => setTimeout(resolve, 150));
-    statusEl.textContent = `Exporting ${totalFrames} frames…`;
+    statusEl.textContent = 'Exporting…';
 
-    for (let f = 0; f < totalFrames; f++) {
-      if (exportCancelled) break;
+    // Draw the first frame before playback begins
+    ctx.drawImage(video, 0, 0);
+    renderTrace(0, false);
 
-      await seekVideoTo(f);
+    // During playback, overlay the trace on every animation frame.
+    // captureStream records at real-time speed so the output matches the original.
+    const drawFrame = () => {
+      if (exportCancelled) return;
+      const f = Math.min(Math.round(video.currentTime * fps), lastFrame);
       ctx.drawImage(video, 0, 0);
       renderTrace(f, false);
+      const progress = video.currentTime / endTime;
+      fill.style.width  = `${Math.min(progress * 100, 100)}%`;
+      pctEl.textContent = `${Math.min(Math.round(progress * 100), 100)}%`;
+      rafId = requestAnimationFrame(drawFrame);
+    };
+    rafId = requestAnimationFrame(drawFrame);
 
-      const progress = (f + 1) / totalFrames;
-      fill.style.width  = `${progress * 100}%`;
-      pctEl.textContent = `${Math.round(progress * 100)}%`;
+    // Play the video and stop once we've passed the last marked frame
+    await new Promise((resolve, reject) => {
+      const onTimeUpdate = () => {
+        if (exportCancelled || video.currentTime >= endTime) {
+          video.removeEventListener('timeupdate', onTimeUpdate);
+          video.removeEventListener('ended', onEnded);
+          resolve();
+        }
+      };
+      const onEnded = () => {
+        video.removeEventListener('timeupdate', onTimeUpdate);
+        resolve();
+      };
+      video.addEventListener('timeupdate', onTimeUpdate);
+      video.addEventListener('ended', onEnded, { once: true });
+      video.play().catch(reject);
+    });
 
-      // Pace playback so MediaRecorder captures each frame at the right rate
-      await new Promise(resolve => setTimeout(resolve, 1000 / fps));
+    video.pause();
+    cancelAnimationFrame(rafId);
+    rafId = null;
+
+    if (!exportCancelled) {
+      // Hold the final frame so it is fully captured
+      ctx.drawImage(video, 0, 0);
+      renderTrace(lastFrame, false);
+      fill.style.width  = '100%';
+      pctEl.textContent = '100%';
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
 
     recorder.stop();
@@ -479,6 +516,8 @@ async function exportVideo() {
       alert(`Export failed: ${err.message}`);
     }
   } finally {
+    if (rafId) cancelAnimationFrame(rafId);
+    video.pause();
     overlay.hidden     = true;
     exportBtn.disabled = false;
     goToFrame(savedFrame);
