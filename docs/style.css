@@ -154,12 +154,12 @@ html, body {
 
 #controls {
   flex-shrink: 0;
-  padding: 12px 14px calc(16px + env(safe-area-inset-bottom));
+  padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
   box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
 }
 
@@ -227,7 +227,7 @@ html, body {
 
 .nav-btn {
   flex: 1;
-  height: 46px;
+  height: 40px;
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border);
@@ -245,12 +245,19 @@ html, body {
 .nav-btn:active { background: var(--border); }
 
 /* Action buttons */
-#action-row  { display: flex; gap: 8px; }
-#export-row  { display: flex; gap: 8px; }
+#action-row { display: flex; gap: 8px; }
+
+/* Customize panel */
+#customize-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+#customize-panel[hidden] { display: none; }
 
 .action-btn {
   flex: 1;
-  height: 46px;
+  height: 40px;
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border);
@@ -418,8 +425,8 @@ html, body {
 
 .gradient-swatch {
   flex-shrink: 0;
-  width: 56px;
-  height: 26px;
+  width: 44px;
+  height: 22px;
   border-radius: 6px;
   border: 2px solid transparent;
   cursor: pointer;
@@ -441,4 +448,13 @@ html, body {
   font-size: 12px;
   color: var(--text-3);
   min-height: 16px;
+}
+
+/* Touch crosshair */
+#crosshair {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  display: none;
+  filter: drop-shadow(0 0 5px rgba(0,0,0,0.75));
 }

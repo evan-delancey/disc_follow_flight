@@ -239,9 +239,48 @@ function markFromEvent(clientX, clientY) {
   updateTopRow();
 }
 
+// ── Touch crosshair ───────────────────────────────────────────────────────────
+
+const crosshair      = document.getElementById('crosshair');
+let   activeTouchId  = null;
+
+function showCrosshair(clientX, clientY) {
+  // Centre the SVG on the touch point, offset 80 px upward so it's above the thumb
+  crosshair.style.left    = `${clientX - 40}px`;
+  crosshair.style.top     = `${clientY - 120}px`;
+  crosshair.style.display = 'block';
+}
+
+function hideCrosshair() {
+  crosshair.style.display = 'none';
+}
+
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  markFromEvent(e.touches[0].clientX, e.touches[0].clientY);
+  const touch      = e.touches[0];
+  activeTouchId    = touch.identifier;
+  showCrosshair(touch.clientX, touch.clientY);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const touch = [...e.touches].find(t => t.identifier === activeTouchId);
+  if (touch) showCrosshair(touch.clientX, touch.clientY);
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  const touch = [...e.changedTouches].find(t => t.identifier === activeTouchId);
+  if (touch) {
+    markFromEvent(touch.clientX, touch.clientY);
+    hideCrosshair();
+    activeTouchId = null;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchcancel', e => {
+  hideCrosshair();
+  activeTouchId = null;
 }, { passive: false });
 
 canvas.addEventListener('click', e => {
@@ -283,6 +322,16 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   if (confirm('Remove all marks?')) { tracker.clear(); drawCurrentFrame(); updateTopRow(); }
 });
 document.getElementById('btn-export').addEventListener('click', exportVideo);
+
+// Customize panel toggle
+const customizePanel = document.getElementById('customize-panel');
+const btnCustomize   = document.getElementById('btn-customize');
+let customizeOpen    = false;
+btnCustomize.addEventListener('click', () => {
+  customizeOpen = !customizeOpen;
+  customizePanel.hidden  = !customizeOpen;
+  btnCustomize.textContent = customizeOpen ? 'Customize Trace ▴' : 'Customize Trace ▾';
+});
 
 document.getElementById('trace-width').addEventListener('input', e => {
   traceWidth = Number(e.target.value);

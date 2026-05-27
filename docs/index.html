@@ -64,34 +64,35 @@
       <div id="action-row">
         <button class="action-btn" id="btn-undo">Undo</button>
         <button class="action-btn" id="btn-clear">Clear</button>
+        <button class="action-btn export" id="btn-export">Export</button>
       </div>
 
-      <div id="export-row">
-        <button class="action-btn export" id="btn-export">Export Video</button>
+      <button class="action-btn" id="btn-customize">Customize Trace ▾</button>
+
+      <div id="customize-panel" hidden>
+        <div class="ctrl-label">Shot trace color</div>
+        <div id="gradient-row"></div>
+
+        <div class="ctrl-label-row">
+          <span>Trace width</span>
+          <span id="width-value">12</span>
+        </div>
+        <input type="range" class="ctrl-slider" id="trace-width" min="1" max="24" value="12" step="1">
+
+        <div class="ctrl-label-row">
+          <span>Width gradient</span>
+          <span id="taper-value">Wide → Narrow</span>
+        </div>
+        <input type="range" class="ctrl-slider" id="trace-taper" min="-10" max="10" value="10" step="1">
+
+        <div class="ctrl-label-row">
+          <span>Trace opacity</span>
+          <span id="opacity-value">100%</span>
+        </div>
+        <input type="range" class="ctrl-slider" id="trace-opacity" min="10" max="100" value="100" step="5">
       </div>
 
-      <div class="ctrl-label">Shot trace color</div>
-      <div id="gradient-row"></div>
-
-      <div class="ctrl-label-row">
-        <span>Trace width</span>
-        <span id="width-value">12</span>
-      </div>
-      <input type="range" class="ctrl-slider" id="trace-width" min="1" max="24" value="12" step="1">
-
-      <div class="ctrl-label-row">
-        <span>Width gradient</span>
-        <span id="taper-value">Wide → Narrow</span>
-      </div>
-      <input type="range" class="ctrl-slider" id="trace-taper" min="-10" max="10" value="10" step="1">
-
-      <div class="ctrl-label-row">
-        <span>Trace opacity</span>
-        <span id="opacity-value">100%</span>
-      </div>
-      <input type="range" class="ctrl-slider" id="trace-opacity" min="10" max="100" value="100" step="5">
-
-      <div id="status">Tap on the disc to mark its position</div>
+      <div id="status">Tap the disc to mark · hold &amp; drag to aim precisely</div>
 
     </div>
   </div>
@@ -108,6 +109,17 @@
 
   <!-- Hidden video element used only for frame decoding -->
   <video id="video" preload="auto" playsinline muted></video>
+
+  <!-- Touch crosshair overlay (positioned via JS on touchstart/move) -->
+  <svg id="crosshair" viewBox="0 0 80 80" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="40" cy="40" r="28" stroke="white" stroke-width="2.5"/>
+    <circle cx="40" cy="40" r="8"  stroke="white" stroke-width="2"/>
+    <circle cx="40" cy="40" r="3"  fill="#F97316"/>
+    <line x1="40" y1="4"  x2="40" y2="22" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <line x1="40" y1="58" x2="40" y2="76" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <line x1="4"  y1="40" x2="22" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <line x1="58" y1="40" x2="76" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  </svg>
 
   <script src="app.js"></script>
 </body>
