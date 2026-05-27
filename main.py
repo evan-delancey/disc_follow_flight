@@ -177,7 +177,7 @@ class App:
         else:
             self.status.set(f"{n} keyframe{'s' if n != 1 else ''} marked — keep clicking at each position along the flight.")
 
-    def _render(self, frame, frame_idx: int):
+    def _render(self, frame, frame_idx: int, show_markers: bool = True):
         out = frame.copy()
         full_trace = self.tracker.get_trace()
         n_full = len(full_trace)
@@ -194,38 +194,37 @@ class App:
             color = (0, int(255 * (1 - t)), int(255 * t))  # BGR: green→red
             cv.line(out, p0, p1, color, 3, cv.LINE_AA)
 
-        # only show keyframe markers that have been reached
-        all_kf = sorted(self.tracker.keyframes.items())
-        visible_kf = [(f, p) for f, p in all_kf if f <= frame_idx]
-        n_vis_kf = len(visible_kf)
-        for j, (fnum, pt) in enumerate(visible_kf):
-            is_first = j == 0
-            is_last = j == n_vis_kf - 1
-            is_cur = fnum == frame_idx
-            if is_cur:
-                color = (0, 255, 255)   # cyan: current frame
-                r = 9
-            elif is_first:
-                color = (0, 255, 0)     # green: release
-                r = 7
-            elif is_last:
-                color = (0, 0, 255)     # red: furthest reached so far
-                r = 7
-            else:
-                color = (255, 200, 0)   # gold: intermediate
-                r = 5
-            cv.circle(out, pt, r, color, -1, cv.LINE_AA)
-            cv.circle(out, pt, r + 2, (0, 0, 0), 1, cv.LINE_AA)
+        if show_markers:
+            all_kf = sorted(self.tracker.keyframes.items())
+            visible_kf = [(f, p) for f, p in all_kf if f <= frame_idx]
+            n_vis_kf = len(visible_kf)
+            for j, (fnum, pt) in enumerate(visible_kf):
+                is_first = j == 0
+                is_last = j == n_vis_kf - 1
+                is_cur = fnum == frame_idx
+                if is_cur:
+                    color = (0, 255, 255)   # cyan: current frame
+                    r = 9
+                elif is_first:
+                    color = (0, 255, 0)     # green: release
+                    r = 7
+                elif is_last:
+                    color = (0, 0, 255)     # red: furthest reached so far
+                    r = 7
+                else:
+                    color = (255, 200, 0)   # gold: intermediate
+                    r = 5
+                cv.circle(out, pt, r, color, -1, cv.LINE_AA)
+                cv.circle(out, pt, r + 2, (0, 0, 0), 1, cv.LINE_AA)
 
-        # labels
-        if visible_kf:
-            _, sp = visible_kf[0]
-            cv.putText(out, "Release", (sp[0] + 10, sp[1] - 8),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1, cv.LINE_AA)
-            if n_vis_kf > 1:
-                _, ep = visible_kf[-1]
-                cv.putText(out, "Land", (ep[0] + 10, ep[1] - 8),
-                           cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 1, cv.LINE_AA)
+            if visible_kf:
+                _, sp = visible_kf[0]
+                cv.putText(out, "Release", (sp[0] + 10, sp[1] - 8),
+                           cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1, cv.LINE_AA)
+                if n_vis_kf > 1:
+                    _, ep = visible_kf[-1]
+                    cv.putText(out, "Land", (ep[0] + 10, ep[1] - 8),
+                               cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 1, cv.LINE_AA)
         return out
 
     # ── interactions ─────────────────────────────────────────────────────────
@@ -262,7 +261,7 @@ class App:
         first_frame_idx = min(self.tracker.keyframes)
         last_frame_idx = max(self.tracker.keyframes)
         bg = self._read(first_frame_idx)
-        result = self._render(bg, last_frame_idx)  # show full trace on static image
+        result = self._render(bg, last_frame_idx, show_markers=False)
         out_path = self._ensure_outputs() / f"{self.stem}_trace.png"
         cv.imwrite(str(out_path), result)
         self.status.set(f"Saved → {out_path}")
@@ -283,7 +282,7 @@ class App:
             ret, frame = self.cap.read()
             if not ret:
                 break
-            writer.write(self._render(frame, frame_idx))
+            writer.write(self._render(frame, frame_idx, show_markers=False))
         writer.release()
 
         # restore seek position
