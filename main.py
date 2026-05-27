@@ -192,7 +192,8 @@ class App:
             i1, _, p1 = visible[j]
             t = i1 / max(n_full - 1, 1)
             color = (0, int(255 * (1 - t)), int(255 * t))  # BGR: green→red
-            cv.line(out, p0, p1, color, 3, cv.LINE_AA)
+            thickness = max(1, int(round(12 * (1 - t) + 1)))
+            cv.line(out, p0, p1, color, thickness, cv.LINE_AA)
 
         if show_markers:
             all_kf = sorted(self.tracker.keyframes.items())
