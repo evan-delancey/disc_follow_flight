@@ -376,11 +376,11 @@ async function shareViaWeb(dataUrl) {
 let exportCancelled = false;
 
 function getSupportedMimeType() {
+  // Video-only candidates — no audio codec (canvas stream has no audio track)
   const candidates = [
     'video/mp4;codecs=avc1.42E01E',
     'video/mp4;codecs=avc1',
     'video/mp4',
-    'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
@@ -440,10 +440,13 @@ async function exportVideo() {
 
   try {
     const stream = canvas.captureStream(fps);
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
     recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onerror = e => { throw e.error ?? new Error('MediaRecorder error'); };
+    recorder.start(100);
 
-    await new Promise(resolve => { recorder.onstart = resolve; recorder.start(200); });
+    // Let the recorder initialise before we start drawing frames
+    await new Promise(resolve => setTimeout(resolve, 150));
     statusEl.textContent = `Exporting ${totalFrames} frames…`;
 
     for (let f = 0; f < totalFrames; f++) {
