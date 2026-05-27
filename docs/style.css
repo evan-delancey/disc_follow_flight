@@ -334,6 +334,55 @@ html, body {
 
 #btn-cancel-export:active { background: var(--border); }
 
+/* Control labels */
+.ctrl-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.ctrl-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.ctrl-label-row span:last-child {
+  color: var(--orange);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Trace control sliders */
+.ctrl-slider {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.ctrl-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--orange);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(249,115,22,0.4);
+}
+
 /* Gradient swatches */
 #gradient-row {
   display: flex;

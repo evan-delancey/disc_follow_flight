@@ -83,6 +83,8 @@ let totalFrames  = 0;
 let currentFrame = 0;
 let seeking      = false;
 let seekTarget   = null;
+let traceWidth   = 12;
+let traceOpacity = 1.0;
 
 // ── Video loading ─────────────────────────────────────────────────────────────
 
@@ -177,9 +179,9 @@ function renderTrace(upToFrame, showMarkers) {
       ctx.beginPath();
       ctx.moveTo(prev.x, prev.y);
       ctx.lineTo(pt.x, pt.y);
-      ctx.lineWidth   = Math.max(scale, (12 * (1 - t) + 1) * scale);
+      ctx.lineWidth   = Math.max(scale, (traceWidth * (1 - t) + 1) * scale);
       const [r, g, b] = lerpColor(activeGradient.start, activeGradient.end, t);
-      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.strokeStyle = `rgba(${r},${g},${b},${traceOpacity})`;
       ctx.stroke();
     }
     prev = pt;
@@ -266,8 +268,19 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   if (tracker.keyframes.size === 0) return;
   if (confirm('Remove all marks?')) { tracker.clear(); drawCurrentFrame(); updateTopRow(); }
 });
-document.getElementById('btn-save').addEventListener('click', saveTraceImage);
 document.getElementById('btn-export').addEventListener('click', exportVideo);
+
+document.getElementById('trace-width').addEventListener('input', e => {
+  traceWidth = Number(e.target.value);
+  document.getElementById('width-value').textContent = traceWidth;
+  drawCurrentFrame();
+});
+
+document.getElementById('trace-opacity').addEventListener('input', e => {
+  traceOpacity = Number(e.target.value) / 100;
+  document.getElementById('opacity-value').textContent = `${e.target.value}%`;
+  drawCurrentFrame();
+});
 document.getElementById('btn-cancel-export').addEventListener('click', () => { exportCancelled = true; });
 
 // FPS toggle (30 ↔ 60)
@@ -295,79 +308,6 @@ function updateTopRow() {
     status.textContent = 'Good — advance the video and keep tapping the disc';
   } else {
     status.textContent = `${n} marks — tap Save Trace when done`;
-  }
-}
-
-// ── Export ────────────────────────────────────────────────────────────────────
-
-async function saveTraceImage() {
-  if (tracker.keyframes.size < 2) {
-    alert('Mark at least 2 positions before saving.');
-    return;
-  }
-
-  const sorted     = [...tracker.keyframes.keys()].sort((a, b) => a - b);
-  const firstFrame = sorted[0];
-  const lastFrame  = sorted[sorted.length - 1];
-  const savedFrame = currentFrame;
-
-  // Seek to the release frame to use as the image background
-  await new Promise(resolve => {
-    const onSeeked = () => { video.removeEventListener('seeked', onSeeked); resolve(); };
-    video.addEventListener('seeked', onSeeked);
-    video.currentTime = firstFrame / fps;
-  });
-
-  // Draw full trace (no markers) on the release frame
-  ctx.drawImage(video, 0, 0);
-  renderTrace(lastFrame, false);
-  const dataUrl = canvas.toDataURL('image/png');
-
-  // Restore the view the user was on
-  goToFrame(savedFrame);
-
-  if (window.Capacitor) {
-    // Running inside the native iOS app — use Capacitor plugins
-    await shareViaCapacitor(dataUrl);
-  } else {
-    // Running in browser (web / GitHub Pages)
-    await shareViaWeb(dataUrl);
-  }
-}
-
-async function shareViaCapacitor(dataUrl) {
-  const { Filesystem, Share } = window.Capacitor.Plugins;
-  const base64 = dataUrl.split(',')[1];
-  const fileName = `disc_trace_${Date.now()}.png`;
-
-  try {
-    await Filesystem.writeFile({
-      path: fileName,
-      data: base64,
-      directory: 'CACHE',
-    });
-    const { uri } = await Filesystem.getUri({ path: fileName, directory: 'CACHE' });
-    await Share.share({ title: 'Disc Trace', files: [uri] });
-  } catch (err) {
-    if (err.name !== 'AbortError') console.error(err);
-  }
-}
-
-async function shareViaWeb(dataUrl) {
-  const blob = await (await fetch(dataUrl)).blob();
-  const file = new File([blob], 'disc_trace.png', { type: 'image/png' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: 'Disc Trace' });
-    } catch (err) {
-      if (err.name !== 'AbortError') console.error(err);
-    }
-  } else {
-    const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement('a'),
-                { href: url, download: 'disc_trace.png' });
-    a.click();
-    URL.revokeObjectURL(url);
   }
 }
 

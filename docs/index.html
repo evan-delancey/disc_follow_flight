@@ -54,11 +54,23 @@
       </div>
 
       <div id="export-row">
-        <button class="action-btn primary" id="btn-save">Save Image</button>
         <button class="action-btn export" id="btn-export">Export Video</button>
       </div>
 
+      <div class="ctrl-label">Shot trace color</div>
       <div id="gradient-row"></div>
+
+      <div class="ctrl-label-row">
+        <span>Trace width</span>
+        <span id="width-value">12</span>
+      </div>
+      <input type="range" class="ctrl-slider" id="trace-width" min="1" max="24" value="12" step="1">
+
+      <div class="ctrl-label-row">
+        <span>Trace opacity</span>
+        <span id="opacity-value">100%</span>
+      </div>
+      <input type="range" class="ctrl-slider" id="trace-opacity" min="10" max="100" value="100" step="5">
 
       <div id="status">Tap on the disc to mark its position</div>
 
