@@ -9,6 +9,16 @@ const GRADIENTS = [
   { name: 'Fire',    start: [255, 210,  0],    end: [255,  50,  0]   }, // yellow → orange
   { name: 'Galaxy',  start: [160, 0,    255],  end: [255,  80,  200] }, // purple → pink
   { name: 'Ice',     start: [200, 240,  255],  end: [0,    160, 255] }, // white → blue
+  { name: 'Lava',    start: [200, 0,    0],    end: [255,  160, 0]   }, // deep red → amber
+  { name: 'Neon',    start: [255, 255,  0],    end: [0,    255, 100] }, // yellow → neon green
+  { name: 'Candy',   start: [255, 0,    150],  end: [120,  0,   255] }, // hot pink → purple
+  { name: 'Thunder', start: [80,  0,    255],  end: [0,    220, 255] }, // electric purple → cyan
+  { name: 'Rose',    start: [255, 120,  160],  end: [180,  0,   50]  }, // rose → crimson
+  { name: 'Forest',  start: [0,   130,  0],    end: [120,  255, 50]  }, // dark green → lime
+  { name: 'Copper',  start: [200, 90,   0],    end: [255,  215, 80]  }, // copper → gold
+  { name: 'Spring',  start: [140, 255,  0],    end: [255,  220, 0]   }, // lime → yellow
+  { name: 'Aqua',    start: [0,   180,  255],  end: [0,    255, 200] }, // sky blue → mint
+  { name: 'Laser',   start: [255, 220,  0],    end: [0,    200, 255] }, // gold → cyan
 ];
 
 let activeGradient = GRADIENTS[0];
@@ -85,6 +95,7 @@ let seeking      = false;
 let seekTarget   = null;
 let traceWidth   = 12;
 let traceOpacity = 1.0;
+let traceTaper   = 10; // -10 = narrow→wide, 0 = uniform, 10 = wide→narrow
 
 // ── Video loading ─────────────────────────────────────────────────────────────
 
@@ -179,7 +190,10 @@ function renderTrace(upToFrame, showMarkers) {
       ctx.beginPath();
       ctx.moveTo(prev.x, prev.y);
       ctx.lineTo(pt.x, pt.y);
-      ctx.lineWidth   = Math.max(scale, (traceWidth * (1 - t) + 1) * scale);
+      const norm   = traceTaper / 10; // -1 to 1
+      const wStart = norm >= 0 ? traceWidth : 1 + (traceWidth - 1) * (1 + norm);
+      const wEnd   = norm <= 0 ? traceWidth : 1 + (traceWidth - 1) * (1 - norm);
+      ctx.lineWidth = Math.max(scale, (wStart + (wEnd - wStart) * t) * scale);
       const [r, g, b] = lerpColor(activeGradient.start, activeGradient.end, t);
       ctx.strokeStyle = `rgba(${r},${g},${b},${traceOpacity})`;
       ctx.stroke();
@@ -279,6 +293,14 @@ document.getElementById('trace-width').addEventListener('input', e => {
 document.getElementById('trace-opacity').addEventListener('input', e => {
   traceOpacity = Number(e.target.value) / 100;
   document.getElementById('opacity-value').textContent = `${e.target.value}%`;
+  drawCurrentFrame();
+});
+
+document.getElementById('trace-taper').addEventListener('input', e => {
+  traceTaper = Number(e.target.value);
+  const labels = { '-10': 'Narrow → Wide', '0': 'Uniform', '10': 'Wide → Narrow' };
+  document.getElementById('taper-value').textContent =
+    labels[e.target.value] ?? (traceTaper > 0 ? 'Wide → Narrow' : 'Narrow → Wide');
   drawCurrentFrame();
 });
 document.getElementById('btn-cancel-export').addEventListener('click', () => { exportCancelled = true; });
