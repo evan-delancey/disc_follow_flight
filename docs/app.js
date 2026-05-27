@@ -536,32 +536,57 @@ async function exportVideo() {
   }
 }
 
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
 async function shareFile(blob, fileName, mimeType) {
   if (window.Capacitor) {
-    // Native iOS — save to cache then open share sheet (includes Instagram)
+    // Native iOS app — write to cache then open system share sheet
     const { Filesystem, Share } = window.Capacitor.Plugins;
     const base64 = await blobToBase64(blob);
     await Filesystem.writeFile({ path: fileName, data: base64, directory: 'CACHE' });
     const { uri } = await Filesystem.getUri({ path: fileName, directory: 'CACHE' });
-    await Share.share({ title: 'Disc Trace Video', files: [uri] });
-  } else {
-    // Web — use Web Share API (iOS Safari opens share sheet inc. Instagram)
-    // or fall back to a download link
-    const file = new File([blob], fileName, { type: mimeType });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Disc Trace Video' }); }
-      catch (e) { if (e.name !== 'AbortError') triggerDownload(blob, fileName); }
-    } else {
-      triggerDownload(blob, fileName);
+    await Share.share({ title: 'DiscTrail', files: [uri] });
+    return;
+  }
+
+  // Web Share API — on iOS this opens the system share sheet which
+  // includes a "Save Video" button that saves directly to Photos.
+  const file = new File([blob], fileName, { type: mimeType });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'DiscTrail' });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // user dismissed — do nothing
+      // Share failed for another reason — fall through to fallback
     }
+  }
+
+  // Fallbacks
+  if (isIOS) {
+    // Show a video preview: user can tap-and-hold → "Save to Camera Roll"
+    showSaveModal(blob, mimeType);
+  } else {
+    // Desktop: trigger a normal file download
+    const url = URL.createObjectURL(blob);
+    const a   = Object.assign(document.createElement('a'), { href: url, download: fileName });
+    a.click();
+    URL.revokeObjectURL(url);
   }
 }
 
-function triggerDownload(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const a   = Object.assign(document.createElement('a'), { href: url, download: fileName });
-  a.click();
-  URL.revokeObjectURL(url);
+function showSaveModal(blob, mimeType) {
+  const url     = URL.createObjectURL(blob);
+  const modal   = document.getElementById('save-modal');
+  const preview = document.getElementById('save-preview');
+  preview.src   = url;
+  modal.hidden  = false;
+
+  document.getElementById('btn-save-close').onclick = () => {
+    modal.hidden = true;
+    preview.src  = '';
+    URL.revokeObjectURL(url);
+  };
 }
 
 function blobToBase64(blob) {

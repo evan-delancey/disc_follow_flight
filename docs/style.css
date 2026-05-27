@@ -295,6 +295,71 @@ html, body {
 
 .action-btn.export:active { background: var(--orange-light); }
 
+/* Save-to-Photos modal */
+#save-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+#save-modal[hidden] { display: none; }
+
+#save-card {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 20px 20px 24px;
+  width: min(340px, 94vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-shadow: var(--shadow-md);
+}
+
+#save-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+#save-preview {
+  width: 100%;
+  max-height: 260px;
+  border-radius: 10px;
+  background: #000;
+  object-fit: contain;
+}
+
+#save-instruction {
+  font-size: 14px;
+  color: var(--text-2);
+  text-align: center;
+  line-height: 1.6;
+}
+
+#save-instruction strong { color: var(--text); }
+
+#btn-save-close {
+  width: 100%;
+  padding: 13px;
+  background: var(--orange);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(249,115,22,0.35);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#btn-save-close:active { background: var(--orange-dark); }
+
 /* Export progress overlay */
 #export-overlay {
   position: fixed;
