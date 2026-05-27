@@ -222,6 +222,32 @@ html, body {
 
 .action-btn.primary:active { background: #00b848; }
 
+#gradient-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+
+#gradient-row::-webkit-scrollbar { display: none; }
+
+.gradient-swatch {
+  flex-shrink: 0;
+  width: 56px;
+  height: 26px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s;
+}
+
+.gradient-swatch.selected {
+  border-color: #fff;
+}
+
 #status {
   text-align: center;
   font-size: 13px;

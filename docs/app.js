@@ -1,5 +1,26 @@
 'use strict';
 
+// ── Gradient presets ──────────────────────────────────────────────────────────
+
+const GRADIENTS = [
+  { name: 'Classic', start: [0,   230,  0],   end: [255,  0,   0]   }, // green → red
+  { name: 'Ocean',   start: [0,   80,   255],  end: [0,    220, 200] }, // blue → cyan
+  { name: 'Sunset',  start: [255, 60,   180],  end: [255,  220, 0]   }, // pink → yellow
+  { name: 'Fire',    start: [255, 210,  0],    end: [255,  50,  0]   }, // yellow → orange
+  { name: 'Galaxy',  start: [160, 0,    255],  end: [255,  80,  200] }, // purple → pink
+  { name: 'Ice',     start: [200, 240,  255],  end: [0,    160, 255] }, // white → blue
+];
+
+let activeGradient = GRADIENTS[0];
+
+function lerpColor(start, end, t) {
+  return [
+    Math.round(start[0] + t * (end[0] - start[0])),
+    Math.round(start[1] + t * (end[1] - start[1])),
+    Math.round(start[2] + t * (end[2] - start[2])),
+  ];
+}
+
 // ── Keyframe tracker ──────────────────────────────────────────────────────────
 
 class KeyframeTracker {
@@ -151,7 +172,8 @@ function renderTrace(upToFrame, showMarkers) {
       ctx.moveTo(prev.x, prev.y);
       ctx.lineTo(pt.x, pt.y);
       ctx.lineWidth   = Math.max(scale, (12 * (1 - t) + 1) * scale);
-      ctx.strokeStyle = `rgb(${Math.round(255 * t)},${Math.round(255 * (1 - t))},0)`;
+      const [r, g, b] = lerpColor(activeGradient.start, activeGradient.end, t);
+      ctx.strokeStyle = `rgb(${r},${g},${b})`;
       ctx.stroke();
     }
     prev = pt;
@@ -202,6 +224,25 @@ canvas.addEventListener('touchstart', e => {
 
 canvas.addEventListener('click', e => {
   markFromEvent(e.clientX, e.clientY);
+});
+
+// ── Gradient swatches ─────────────────────────────────────────────────────────
+
+const gradientRow = document.getElementById('gradient-row');
+
+GRADIENTS.forEach((g, i) => {
+  const swatch = document.createElement('button');
+  swatch.className = 'gradient-swatch' + (i === 0 ? ' selected' : '');
+  swatch.title     = g.name;
+  swatch.style.background =
+    `linear-gradient(to right, rgb(${g.start}), rgb(${g.end}))`;
+  swatch.addEventListener('click', () => {
+    activeGradient = g;
+    gradientRow.querySelectorAll('.gradient-swatch').forEach(s => s.classList.remove('selected'));
+    swatch.classList.add('selected');
+    drawCurrentFrame();
+  });
+  gradientRow.appendChild(swatch);
 });
 
 // ── Controls ──────────────────────────────────────────────────────────────────
