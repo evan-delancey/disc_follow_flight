@@ -114,6 +114,7 @@ video.addEventListener('loadeddata', () => {
   scrubber.value = 0;
   tracker.clear();
   currentFrame = 0;
+  setExportReady(null);
   showEditor();
   goToFrame(0);
 });
@@ -320,9 +321,28 @@ document.getElementById('btn-p10').addEventListener('click',  () => goToFrame(cu
 document.getElementById('btn-undo').addEventListener('click', () => { tracker.undo(); drawCurrentFrame(); updateTopRow(); });
 document.getElementById('btn-clear').addEventListener('click', () => {
   if (tracker.keyframes.size === 0) return;
-  if (confirm('Remove all marks?')) { tracker.clear(); drawCurrentFrame(); updateTopRow(); }
+  if (confirm('Remove all marks?')) { tracker.clear(); setExportReady(null); drawCurrentFrame(); updateTopRow(); }
 });
-document.getElementById('btn-export').addEventListener('click', exportVideo);
+// Export button: starts export when no finished blob is stored;
+// becomes "Save to Photos" (fresh tap → share gesture) after export.
+const exportBtn = document.getElementById('btn-export');
+let   lastExport = null; // { blob, fileName, mimeType }
+
+function setExportReady(ex) {
+  lastExport = ex;
+  exportBtn.textContent = ex ? 'Save to Photos ↗' : 'Export';
+  exportBtn.classList.toggle('primary', !!ex);
+  exportBtn.classList.toggle('export',  !ex);
+}
+
+exportBtn.addEventListener('click', async () => {
+  if (lastExport) {
+    // Called from a fresh tap — iOS will honour the user gesture
+    await doShare(lastExport.blob, lastExport.fileName, lastExport.mimeType);
+  } else {
+    await exportVideo();
+  }
+});
 
 // Customize panel toggle
 const customizePanel = document.getElementById('customize-panel');
@@ -517,9 +537,8 @@ async function exportVideo() {
     await new Promise(resolve => { recorder.onstop = resolve; });
 
     if (!exportCancelled) {
-      statusEl.textContent = 'Sharing…';
       const blob = new Blob(chunks, { type: mimeType });
-      await shareFile(blob, fileName, mimeType);
+      setExportReady({ blob, fileName, mimeType });
     }
 
   } catch (err) {
@@ -536,11 +555,9 @@ async function exportVideo() {
   }
 }
 
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-async function shareFile(blob, fileName, mimeType) {
+// doShare MUST be called from a direct tap handler so iOS honours the gesture.
+async function doShare(blob, fileName, mimeType) {
   if (window.Capacitor) {
-    // Native iOS app — write to cache then open system share sheet
     const { Filesystem, Share } = window.Capacitor.Plugins;
     const base64 = await blobToBase64(blob);
     await Filesystem.writeFile({ path: fileName, data: base64, directory: 'CACHE' });
@@ -549,44 +566,21 @@ async function shareFile(blob, fileName, mimeType) {
     return;
   }
 
-  // Web Share API — on iOS this opens the system share sheet which
-  // includes a "Save Video" button that saves directly to Photos.
   const file = new File([blob], fileName, { type: mimeType });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: 'DiscTrail' });
       return;
     } catch (e) {
-      if (e.name === 'AbortError') return; // user dismissed — do nothing
-      // Share failed for another reason — fall through to fallback
+      if (e.name === 'AbortError') return;
     }
   }
 
-  // Fallbacks
-  if (isIOS) {
-    // Show a video preview: user can tap-and-hold → "Save to Camera Roll"
-    showSaveModal(blob, mimeType);
-  } else {
-    // Desktop: trigger a normal file download
-    const url = URL.createObjectURL(blob);
-    const a   = Object.assign(document.createElement('a'), { href: url, download: fileName });
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-}
-
-function showSaveModal(blob, mimeType) {
-  const url     = URL.createObjectURL(blob);
-  const modal   = document.getElementById('save-modal');
-  const preview = document.getElementById('save-preview');
-  preview.src   = url;
-  modal.hidden  = false;
-
-  document.getElementById('btn-save-close').onclick = () => {
-    modal.hidden = true;
-    preview.src  = '';
-    URL.revokeObjectURL(url);
-  };
+  // Final fallback: file download (works on desktop; on iOS opens in browser)
+  const url = URL.createObjectURL(blob);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: fileName });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function blobToBase64(blob) {
