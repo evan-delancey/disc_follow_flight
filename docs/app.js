@@ -122,19 +122,25 @@ function goToFrame(f) {
 
 function doSeek() {
   seeking = true;
-  document.getElementById('seek-overlay').hidden = false;
-  video.currentTime = seekTarget / fps;
+  const targetTime = seekTarget / fps;
+  // If already at the right time the browser won't fire 'seeked' — handle now.
+  if (Math.abs(video.currentTime - targetTime) < 0.001) {
+    seeking = false;
+    seekTarget = null;
+    drawCurrentFrame();
+    return;
+  }
+  video.currentTime = targetTime;
 }
 
 video.addEventListener('seeked', () => {
-  // If target moved while we were seeking, seek again
+  // If target moved while we were seeking, seek again.
   if (seekTarget !== null && Math.round(video.currentTime * fps) !== seekTarget) {
     doSeek();
     return;
   }
   seeking = false;
   seekTarget = null;
-  document.getElementById('seek-overlay').hidden = true;
   drawCurrentFrame();
 });
 
