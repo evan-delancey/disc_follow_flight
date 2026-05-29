@@ -245,6 +245,7 @@ function drawMarkers(upToFrame) {
 // ── Tap / click to mark disc ──────────────────────────────────────────────────
 
 function markFromEvent(clientX, clientY) {
+  if (seeking) return;   // don't mark while the video is still seeking to the target frame
   const rect  = canvas.getBoundingClientRect();
   const x     = Math.round((clientX - rect.left)  * (canvas.width  / rect.width));
   const y     = Math.round((clientY - rect.top)   * (canvas.height / rect.height));
@@ -482,10 +483,17 @@ async function exportVideo() {
   const endTime   = (lastFrame + 1) / fps;
   const chunks    = [];
   let rafId       = null;
+  let rafActive   = false;   // hard stop flag — prevents the RAF loop outliving its cancel
 
   try {
     // Seek to the beginning before recording starts
     await seekVideoTo(0);
+
+    // ── Fix 3: draw the clean first frame NOW, before the recorder captures anything ──
+    // This prevents the stale full-trace canvas from appearing at the start of the export.
+    ctx.drawImage(video, 0, 0);
+
+    video.loop = false;   // ── Fix 2a: ensure video never loops during export ──
 
     const stream   = canvas.captureStream(fps);
     const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
@@ -493,18 +501,14 @@ async function exportVideo() {
     recorder.onerror = e => { throw e.error ?? new Error('MediaRecorder error'); };
     recorder.start(100);
 
-    // Let the recorder initialise
+    // Let the recorder initialise (canvas already shows clean frame 0, no trace)
     await new Promise(resolve => setTimeout(resolve, 150));
     statusEl.textContent = 'Exporting…';
 
-    // Draw the first frame before playback begins
-    ctx.drawImage(video, 0, 0);
-    renderTrace(0, false);
-
-    // During playback, overlay the trace on every animation frame.
-    // captureStream records at real-time speed so the output matches the original.
+    // ── Fix 2b: use rafActive flag so the loop stops the moment we set it false ──
+    rafActive = true;
     const drawFrame = () => {
-      if (exportCancelled) return;
+      if (!rafActive || exportCancelled) return;
       const f = Math.min(Math.round(video.currentTime * fps), lastFrame);
       ctx.drawImage(video, 0, 0);
       renderTrace(f, false);
@@ -526,6 +530,7 @@ async function exportVideo() {
       };
       const onEnded = () => {
         video.removeEventListener('timeupdate', onTimeUpdate);
+        video.removeEventListener('ended', onEnded);
         resolve();
       };
       video.addEventListener('timeupdate', onTimeUpdate);
@@ -533,6 +538,7 @@ async function exportVideo() {
       video.play().catch(reject);
     });
 
+    rafActive = false;   // stop the RAF loop before cancelling
     video.pause();
     cancelAnimationFrame(rafId);
     rafId = null;
@@ -560,6 +566,7 @@ async function exportVideo() {
       alert(`Export failed: ${err.message}`);
     }
   } finally {
+    rafActive = false;
     if (rafId) cancelAnimationFrame(rafId);
     video.pause();
     overlay.hidden     = true;
