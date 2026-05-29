@@ -177,43 +177,41 @@ function drawCurrentFrame() {
 // showMarkers: draw keyframe dots + labels (false for exports)
 function renderTrace(upToFrame, showMarkers) {
   const fullTrace = tracker.getTrace();
-  const pts       = fullTrace.filter(p => p.frame <= upToFrame);
-
-  if (pts.length < 2) {
+  const nFull     = fullTrace.length;
+  if (nFull < 2) {
     if (showMarkers) drawMarkers(upToFrame);
     return;
   }
 
+  // Scale line widths from video-pixel space → screen-pixel space
   const dispW = canvas.getBoundingClientRect().width || canvas.width;
   const scale = canvas.width / dispW;
 
-  // ── Build a single smooth path using midpoint quadratic bezier ──────────
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length - 1; i++) {
-    const mx = (pts[i].x + pts[i + 1].x) / 2;
-    const my = (pts[i].y + pts[i + 1].y) / 2;
-    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  ctx.lineCap  = 'round';
+  ctx.lineJoin = 'round';
+
+  // Draw segment-by-segment so lineWidth (taper) and color can vary per step.
+  // Smoothness comes from the Catmull-Rom points in getTrace() — segments are
+  // very short (1 frame each) so the path looks perfectly smooth.
+  let prev = null;
+  for (let i = 0; i < nFull; i++) {
+    const pt = fullTrace[i];
+    if (pt.frame > upToFrame) break;
+    if (prev !== null) {
+      const t      = i / Math.max(nFull - 1, 1);
+      const norm   = traceTaper / 10;               // −1 … 1
+      const wStart = norm >= 0 ? traceWidth : 1 + (traceWidth - 1) * (1 + norm);
+      const wEnd   = norm <= 0 ? traceWidth : 1 + (traceWidth - 1) * (1 - norm);
+      ctx.beginPath();
+      ctx.moveTo(prev.x, prev.y);
+      ctx.lineTo(pt.x,   pt.y);
+      ctx.lineWidth   = Math.max(scale, (wStart + (wEnd - wStart) * t) * scale);
+      const [r, g, b] = lerpColor(activeGradient.start, activeGradient.end, t);
+      ctx.strokeStyle = `rgba(${r},${g},${b},${traceOpacity})`;
+      ctx.stroke();
+    }
+    prev = pt;
   }
-  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
-
-  // ── Canvas linear gradient from trail start → end ───────────────────────
-  const grad = ctx.createLinearGradient(
-    pts[0].x, pts[0].y,
-    pts[pts.length - 1].x, pts[pts.length - 1].y
-  );
-  const [rs, gs, bs] = activeGradient.start;
-  const [re, ge, be] = activeGradient.end;
-  grad.addColorStop(0, `rgba(${rs},${gs},${bs},${traceOpacity})`);
-  grad.addColorStop(1, `rgba(${re},${ge},${be},${traceOpacity})`);
-
-  ctx.strokeStyle = grad;
-  ctx.lineWidth   = traceWidth * scale;
-  ctx.lineCap     = 'round';
-  ctx.lineJoin    = 'round';
-  ctx.stroke();
-  ctx.restore();
 
   if (showMarkers) drawMarkers(upToFrame);
 }
