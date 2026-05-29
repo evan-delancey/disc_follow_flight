@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+
+    <!-- Trail gradient: transparent at tail, full orange at disc -->
+    <linearGradient id="trailGrad" x1="180" y1="820" x2="620" y2="360"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#F97316" stop-opacity="0"/>
+      <stop offset="40%"  stop-color="#F97316" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#F97316" stop-opacity="1"/>
+    </linearGradient>
+
+    <!-- Soft glow on the trail -->
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="22" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Subtle inner shadow on disc -->
+    <filter id="discShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="-6" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+
+  </defs>
+
+  <!-- ── Background ── -->
+  <rect width="1024" height="1024" rx="180" fill="#111111"/>
+
+  <!-- ── Flight trail ── -->
+  <!-- Cubic bezier: starts lower-left, sweeps up to disc position -->
+  <path d="M 180 820 C 290 690 455 515 622 358"
+        stroke="url(#trailGrad)"
+        stroke-width="78"
+        stroke-linecap="round"
+        fill="none"
+        filter="url(#glow)"/>
+
+  <!-- ── Disc (perspective ellipse, rotated to match flight angle) ── -->
+  <g transform="translate(706, 298) rotate(-20)" filter="url(#discShadow)">
+
+    <!-- Outer rim / flange -->
+    <ellipse cx="0" cy="0" rx="164" ry="66" fill="#E8E8E8"/>
+
+    <!-- Main flight plate (slightly inset) -->
+    <ellipse cx="-2" cy="-4" rx="108" ry="43" fill="#F2F2F2"/>
+
+    <!-- Dome curve highlight -->
+    <ellipse cx="-18" cy="-14" rx="52" ry="18" fill="white" opacity="0.75"/>
+
+    <!-- Center parting line ring -->
+    <ellipse cx="0" cy="0" rx="164" ry="66"
+             fill="none" stroke="#C8C8C8" stroke-width="7"/>
+
+    <!-- Center pip -->
+    <ellipse cx="0" cy="-2" rx="18" ry="7" fill="#D0D0D0"/>
+
+  </g>
+
+</svg>
