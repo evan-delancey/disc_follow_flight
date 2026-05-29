@@ -168,7 +168,7 @@ html, body {
 
 #controls {
   flex-shrink: 0;
-  padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  padding: 8px 22px calc(12px + env(safe-area-inset-bottom));
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
