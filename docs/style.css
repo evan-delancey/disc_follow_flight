@@ -74,9 +74,23 @@ html, body {
 #brand-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   padding-bottom: 2px;
 }
+
+#btn-new-video {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+#btn-new-video:active { background: var(--border); }
 
 .wordmark {
   font-size: 15px;

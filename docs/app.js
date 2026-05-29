@@ -3,6 +3,7 @@
 // ── Gradient presets ──────────────────────────────────────────────────────────
 
 const GRADIENTS = [
+  { name: 'Teal',    start: [0,   160, 255],  end: [0,    230, 110] }, // blue → green (default)
   { name: 'Classic', start: [0,   230,  0],   end: [255,  0,   0]   }, // green → red
   { name: 'Ocean',   start: [0,   80,   255],  end: [0,    220, 200] }, // blue → cyan
   { name: 'Sunset',  start: [255, 60,   180],  end: [255,  220, 0]   }, // pink → yellow
@@ -57,7 +58,7 @@ class KeyframeTracker {
   }
 
   // Returns [{frame, x, y}] for every frame between first and last keyframe,
-  // linearly interpolated between adjacent keyframes.
+  // smoothly interpolated using a Catmull-Rom spline through adjacent keyframes.
   getTrace() {
     if (this.keyframes.size === 0) return [];
     const sorted = [...this.keyframes.entries()].sort(([a], [b]) => a - b);
@@ -69,10 +70,17 @@ class KeyframeTracker {
     for (let i = 0; i < sorted.length - 1; i++) {
       const [f0, p0] = sorted[i];
       const [f1, p1] = sorted[i + 1];
+      // Catmull-Rom: clamp phantom control points at the boundaries
+      const pp = sorted[Math.max(i - 1, 0)][1];
+      const pn = sorted[Math.min(i + 2, sorted.length - 1)][1];
       for (let f = f0; f < f1; f++) {
         const t = (f - f0) / (f1 - f0);
-        points.push({ frame: f, x: Math.round(p0.x + t * (p1.x - p0.x)),
-                                y: Math.round(p0.y + t * (p1.y - p0.y)) });
+        const t2 = t * t, t3 = t2 * t;
+        points.push({
+          frame: f,
+          x: Math.round(0.5 * ((2*p0.x) + (-pp.x + p1.x)*t + (2*pp.x - 5*p0.x + 4*p1.x - pn.x)*t2 + (-pp.x + 3*p0.x - 3*p1.x + pn.x)*t3)),
+          y: Math.round(0.5 * ((2*p0.y) + (-pp.y + p1.y)*t + (2*pp.y - 5*p0.y + 4*p1.y - pn.y)*t2 + (-pp.y + 3*p0.y - 3*p1.y + pn.y)*t3)),
+        });
       }
     }
     const [lf, lp] = sorted[sorted.length - 1];
@@ -169,38 +177,43 @@ function drawCurrentFrame() {
 // showMarkers: draw keyframe dots + labels (false for exports)
 function renderTrace(upToFrame, showMarkers) {
   const fullTrace = tracker.getTrace();
-  const nFull     = fullTrace.length;
-  if (nFull < 2) {
+  const pts       = fullTrace.filter(p => p.frame <= upToFrame);
+
+  if (pts.length < 2) {
     if (showMarkers) drawMarkers(upToFrame);
     return;
   }
 
-  // Scale line widths from video-pixel space → screen-pixel space
   const dispW = canvas.getBoundingClientRect().width || canvas.width;
   const scale = canvas.width / dispW;
 
-  ctx.lineCap  = 'round';
-  ctx.lineJoin = 'round';
-
-  let prev = null;
-  for (let i = 0; i < nFull; i++) {
-    const pt = fullTrace[i];
-    if (pt.frame > upToFrame) break;
-    if (prev !== null) {
-      const t = i / Math.max(nFull - 1, 1);
-      ctx.beginPath();
-      ctx.moveTo(prev.x, prev.y);
-      ctx.lineTo(pt.x, pt.y);
-      const norm   = traceTaper / 10; // -1 to 1
-      const wStart = norm >= 0 ? traceWidth : 1 + (traceWidth - 1) * (1 + norm);
-      const wEnd   = norm <= 0 ? traceWidth : 1 + (traceWidth - 1) * (1 - norm);
-      ctx.lineWidth = Math.max(scale, (wStart + (wEnd - wStart) * t) * scale);
-      const [r, g, b] = lerpColor(activeGradient.start, activeGradient.end, t);
-      ctx.strokeStyle = `rgba(${r},${g},${b},${traceOpacity})`;
-      ctx.stroke();
-    }
-    prev = pt;
+  // ── Build a single smooth path using midpoint quadratic bezier ──────────
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i].x + pts[i + 1].x) / 2;
+    const my = (pts[i].y + pts[i + 1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
   }
+  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+
+  // ── Canvas linear gradient from trail start → end ───────────────────────
+  const grad = ctx.createLinearGradient(
+    pts[0].x, pts[0].y,
+    pts[pts.length - 1].x, pts[pts.length - 1].y
+  );
+  const [rs, gs, bs] = activeGradient.start;
+  const [re, ge, be] = activeGradient.end;
+  grad.addColorStop(0, `rgba(${rs},${gs},${bs},${traceOpacity})`);
+  grad.addColorStop(1, `rgba(${re},${ge},${be},${traceOpacity})`);
+
+  ctx.strokeStyle = grad;
+  ctx.lineWidth   = traceWidth * scale;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+  ctx.stroke();
+  ctx.restore();
 
   if (showMarkers) drawMarkers(upToFrame);
 }
@@ -589,5 +602,34 @@ function blobToBase64(blob) {
     reader.onload  = () => resolve(reader.result.split(',')[1]);
     reader.onerror = reject;
     reader.readAsDataURL(blob);
+  });
+}
+
+// ── New Video / back navigation ───────────────────────────────────────────
+
+function goToUpload() {
+  if (tracker.keyframes.size > 0) {
+    if (!confirm('Go back? Your marks will be lost.')) return;
+  }
+  tracker.clear();
+  setExportReady(null);
+  video.pause();
+  video.src = '';
+  document.getElementById('editor-screen').classList.remove('active');
+  document.getElementById('upload-screen').classList.add('active');
+  document.getElementById('video-input').value = '';
+}
+
+document.getElementById('btn-new-video').addEventListener('click', goToUpload);
+
+// Intercept Android hardware back button so the app doesn't crash/close unexpectedly
+if (window.Capacitor?.Plugins?.App) {
+  window.Capacitor.Plugins.App.addListener('backButton', () => {
+    const editorActive = document.getElementById('editor-screen').classList.contains('active');
+    if (editorActive) {
+      goToUpload();
+    } else {
+      window.Capacitor.Plugins.App.exitApp();
+    }
   });
 }
