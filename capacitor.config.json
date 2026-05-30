@@ -1,6 +1,6 @@
 {
-  "appId": "com.evandel.discfollowflight",
-  "appName": "Disc Follow Flight",
+  "appId": "com.disc_trace.app",
+  "appName": "DiscTrail",
   "webDir": "docs",
   "plugins": {
     "SplashScreen": {

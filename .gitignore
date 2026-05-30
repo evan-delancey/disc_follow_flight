@@ -3,5 +3,20 @@ outputs/
 __pycache__/
 *.pyc
 node_modules/
+
+# iOS
 ios/App/Pods/
 ios/App/App.xcworkspace/xcuserdata/
+
+# Android build artifacts (keep source, ignore generated/local files)
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/.idea/
+android/app/release/
+android/capacitor-cordova-android-plugins/build/
+
+# Misc
+icon-preview.html
+.claude/
