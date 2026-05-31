@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="theme-color" content="#111">
   <title>DiscTrail</title>
-  <link rel="stylesheet" href="style.css?v=20260529">
+  <link rel="stylesheet" href="style.css?v=20260531">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -27,8 +27,20 @@
       <h1>Disc<span class="brand-accent">Trail</span></h1>
       <div class="upload-divider"></div>
       <p class="tagline">Give flair to your disc golf shots — allow everyone to see the flight of your disc.</p>
-      <label class="upload-btn" for="video-input">Choose Video</label>
-      <input type="file" id="video-input" accept="video/*">
+      <div class="mode-cards">
+        <label class="mode-card" for="video-input-auto">
+          <span class="mode-icon">&#9889;</span>
+          <span class="mode-title">Auto Trace</span>
+          <span class="mode-desc">Tap the disc once — app tracks the flight</span>
+        </label>
+        <label class="mode-card" for="video-input-manual">
+          <span class="mode-icon">&#9998;</span>
+          <span class="mode-title">Manual Trace</span>
+          <span class="mode-desc">Mark the disc position frame by frame</span>
+        </label>
+      </div>
+      <input type="file" id="video-input-auto"   accept="video/*">
+      <input type="file" id="video-input-manual" accept="video/*">
       <p class="hint">Pick a throw from your camera roll</p>
     </div>
   </div>
@@ -38,6 +50,13 @@
 
     <div id="canvas-wrap">
       <canvas id="canvas"></canvas>
+      <!-- Shown in auto-trace mode while waiting for the user to tap the disc -->
+      <div id="tap-disc-overlay" hidden>
+        <div id="tap-disc-msg">
+          <span class="tap-disc-icon">&#127919;</span>
+          <p>Tap the disc in this frame to begin auto-tracking</p>
+        </div>
+      </div>
     </div>
 
     <div id="controls">
@@ -99,6 +118,16 @@
     </div>
   </div>
 
+  <!-- Auto-track progress overlay -->
+  <div id="autotrack-overlay" hidden>
+    <div id="autotrack-card">
+      <p id="autotrack-status">Tracking disc…</p>
+      <div id="autotrack-bar-wrap"><div id="autotrack-bar-fill"></div></div>
+      <p id="autotrack-pct">0%</p>
+      <button id="btn-cancel-autotrack">Cancel</button>
+    </div>
+  </div>
+
   <!-- Export progress overlay -->
   <div id="export-overlay" hidden>
     <div id="export-card">
@@ -123,6 +152,6 @@
     <line x1="58" y1="40" x2="76" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/>
   </svg>
 
-  <script src="app.js?v=20260529"></script>
+  <script src="app.js?v=20260531"></script>
 </body>
 </html>

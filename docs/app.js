@@ -105,11 +105,25 @@ let traceWidth   = 12;
 let traceOpacity = 1.0;
 let traceTaper   = 10; // -10 = narrow→wide, 0 = uniform, 10 = wide→narrow
 
+// Auto-trace state
+let autoTraceMode      = false; // true when video was loaded via "Auto Trace" card
+let awaitingDiscSelect = false; // true while waiting for the user to tap the disc
+let autoTrackCancelled = false; // set to true to abort a running auto-track
+
 // ── Video loading ─────────────────────────────────────────────────────────────
 
-document.getElementById('video-input').addEventListener('change', e => {
+document.getElementById('video-input-auto').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
+  autoTraceMode = true;
+  video.src = URL.createObjectURL(file);
+  video.load();
+});
+
+document.getElementById('video-input-manual').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  autoTraceMode = false;
   video.src = URL.createObjectURL(file);
   video.load();
 });
@@ -125,6 +139,11 @@ video.addEventListener('loadeddata', () => {
   setExportReady(null);
   showEditor();
   goToFrame(0);
+
+  if (autoTraceMode) {
+    awaitingDiscSelect = true;
+    document.getElementById('tap-disc-overlay').hidden = false;
+  }
 });
 
 function showEditor() {
@@ -285,8 +304,14 @@ canvas.addEventListener('touchend', e => {
   e.preventDefault();
   const touch = [...e.changedTouches].find(t => t.identifier === activeTouchId);
   if (touch) {
-    // Mark at the crosshair centre, not the finger — crosshair is 80px above touch point
-    markFromEvent(touch.clientX, touch.clientY - 80);
+    // Crosshair is offset 80 px above the finger — use that adjusted point
+    const cx = touch.clientX;
+    const cy = touch.clientY - 80;
+    if (awaitingDiscSelect) {
+      handleDiscSelect(cx, cy);
+    } else {
+      markFromEvent(cx, cy);
+    }
     hideCrosshair();
     activeTouchId = null;
   }
@@ -298,7 +323,11 @@ canvas.addEventListener('touchcancel', e => {
 }, { passive: false });
 
 canvas.addEventListener('click', e => {
-  markFromEvent(e.clientX, e.clientY);
+  if (awaitingDiscSelect) {
+    handleDiscSelect(e.clientX, e.clientY);
+  } else {
+    markFromEvent(e.clientX, e.clientY);
+  }
 });
 
 // ── Gradient swatches ─────────────────────────────────────────────────────────
@@ -385,7 +414,8 @@ document.getElementById('trace-taper').addEventListener('input', e => {
     labels[e.target.value] ?? (traceTaper > 0 ? 'Wide → Narrow' : 'Narrow → Wide');
   drawCurrentFrame();
 });
-document.getElementById('btn-cancel-export').addEventListener('click', () => { exportCancelled = true; });
+document.getElementById('btn-cancel-export').addEventListener('click',    () => { exportCancelled    = true; });
+document.getElementById('btn-cancel-autotrack').addEventListener('click', () => { autoTrackCancelled = true; });
 
 // FPS toggle (30 ↔ 60)
 document.getElementById('fps-toggle').addEventListener('click', () => {
@@ -411,7 +441,7 @@ function updateTopRow() {
   } else if (n === 1) {
     status.textContent = 'Good — advance the video and keep tapping the disc';
   } else {
-    status.textContent = `${n} marks — tap Save Trace when done`;
+    status.textContent = `${n} marks — tap Export when done`;
   }
 }
 
@@ -613,21 +643,187 @@ function blobToBase64(blob) {
 // ── New Video / back navigation ───────────────────────────────────────────
 
 function goToUpload() {
-  if (tracker.keyframes.size > 0) {
+  if (tracker.keyframes.size > 0 || awaitingDiscSelect) {
     if (!confirm('Go back? Your marks will be lost.')) return;
   }
+  // Cancel any running auto-track
+  autoTrackCancelled = true;
+  awaitingDiscSelect = false;
+  autoTraceMode      = false;
+
   tracker.clear();
   setExportReady(null);
   video.pause();
   video.src = '';
+  document.getElementById('tap-disc-overlay').hidden    = true;
+  document.getElementById('autotrack-overlay').hidden   = true;
   document.getElementById('editor-screen').classList.remove('active');
   document.getElementById('upload-screen').classList.add('active');
-  document.getElementById('video-input').value = '';
+  document.getElementById('video-input-auto').value   = '';
+  document.getElementById('video-input-manual').value = '';
 }
 
 document.getElementById('btn-new-video').addEventListener('click', goToUpload);
 
-// Intercept Android hardware back button so the app doesn't crash/close unexpectedly
+// ── Auto-tracking ─────────────────────────────────────────────────────────────
+
+const TEMPLATE_SIZE     = 28;  // pixel side-length of the patch captured from the disc
+const SEARCH_RADIUS     = 70;  // max pixel radius to search around last known position
+const SEARCH_STEP       = 2;   // step size when scanning candidates (larger = faster but coarser)
+const AUTO_TRACK_STRIDE = 3;   // seek every Nth frame; Catmull-Rom fills the rest
+
+// Convert a rectangular region of image data to a flat Float32Array of greyscale values.
+function toGray(data, width, cx, cy, size) {
+  const half  = Math.floor(size / 2);
+  const patch = new Float32Array(size * size);
+  for (let dy = 0; dy < size; dy++) {
+    for (let dx = 0; dx < size; dx++) {
+      const px = cx - half + dx;
+      const py = cy - half + dy;
+      if (px < 0 || py < 0 || px >= width) continue; // edge pixels stay 0
+      const idx = (py * width + px) * 4;
+      patch[dy * size + dx] =
+        0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+    }
+  }
+  return patch;
+}
+
+// Find the position in imageData that best matches the template patch using SSD.
+function findBestMatchSSD(imageData, template, lastX, lastY) {
+  const { data, width, height } = imageData;
+  const size = Math.round(Math.sqrt(template.length));
+  const half = Math.floor(size / 2);
+  let bestX = lastX, bestY = lastY, bestSSD = Infinity;
+
+  const x0 = Math.max(half,             lastX - SEARCH_RADIUS);
+  const x1 = Math.min(width  - half - 1, lastX + SEARCH_RADIUS);
+  const y0 = Math.max(half,             lastY - SEARCH_RADIUS);
+  const y1 = Math.min(height - half - 1, lastY + SEARCH_RADIUS);
+
+  for (let cy = y0; cy <= y1; cy += SEARCH_STEP) {
+    for (let cx = x0; cx <= x1; cx += SEARCH_STEP) {
+      let ssd = 0;
+      outer: for (let dy = 0; dy < size; dy++) {
+        for (let dx = 0; dx < size; dx++) {
+          const px  = cx - half + dx;
+          const py  = cy - half + dy;
+          const idx = (py * width + px) * 4;
+          const g   = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+          const d   = g - template[dy * size + dx];
+          ssd += d * d;
+          if (ssd >= bestSSD) break outer; // prune early
+        }
+      }
+      if (ssd < bestSSD) { bestSSD = ssd; bestX = cx; bestY = cy; }
+    }
+  }
+  return { x: bestX, y: bestY };
+}
+
+// Convert canvas-space clientX/Y to video-pixel coords then begin auto-tracking.
+function handleDiscSelect(clientX, clientY) {
+  if (!awaitingDiscSelect) return;
+  awaitingDiscSelect = false;
+  document.getElementById('tap-disc-overlay').hidden = true;
+
+  const rect = canvas.getBoundingClientRect();
+  const x    = Math.round((clientX - rect.left) * (canvas.width  / rect.width));
+  const y    = Math.round((clientY - rect.top)  * (canvas.height / rect.height));
+
+  autoTrackDisc(x, y);
+}
+
+// Walk through every AUTO_TRACK_STRIDE-th frame running template matching,
+// then let Catmull-Rom interpolate between the found keyframes.
+async function autoTrackDisc(startX, startY) {
+  autoTrackCancelled = false;
+
+  const overlay  = document.getElementById('autotrack-overlay');
+  const statusEl = document.getElementById('autotrack-status');
+  const fill     = document.getElementById('autotrack-bar-fill');
+  const pctEl    = document.getElementById('autotrack-pct');
+
+  overlay.hidden        = false;
+  statusEl.textContent  = 'Analysing disc…';
+  fill.style.width      = '0%';
+  pctEl.textContent     = '0%';
+
+  // Use a dedicated offscreen canvas so we never corrupt the visible canvas
+  // during frame-by-frame seeking.
+  const off    = document.createElement('canvas');
+  off.width    = canvas.width;
+  off.height   = canvas.height;
+  const offCtx = off.getContext('2d', { willReadFrequently: true });
+
+  try {
+    // ── Capture template from frame 0 ──────────────────────────────────────
+    await seekVideoTo(0);
+    offCtx.drawImage(video, 0, 0, off.width, off.height);
+    let imgData  = offCtx.getImageData(0, 0, off.width, off.height);
+    let template = toGray(imgData.data, off.width, startX, startY, TEMPLATE_SIZE);
+
+    tracker.add(0, startX, startY);
+    let lastX = startX, lastY = startY;
+
+    // Build the list of frames we'll actually seek to (every Nth + last frame)
+    const strides = [];
+    for (let f = AUTO_TRACK_STRIDE; f < totalFrames; f += AUTO_TRACK_STRIDE) strides.push(f);
+    const lastF = totalFrames - 1;
+    if (strides.length === 0 || strides[strides.length - 1] !== lastF) strides.push(lastF);
+
+    // ── Main tracking loop ─────────────────────────────────────────────────
+    for (let si = 0; si < strides.length; si++) {
+      if (autoTrackCancelled) break;
+
+      const f = strides[si];
+      await seekVideoTo(f);
+      offCtx.drawImage(video, 0, 0, off.width, off.height);
+      imgData = offCtx.getImageData(0, 0, off.width, off.height);
+
+      const { x, y } = findBestMatchSSD(imgData, template, lastX, lastY);
+      tracker.add(f, x, y);
+
+      // Refresh template every ~10 tracked frames so it adapts to rotation/lighting
+      if (si % 10 === 0) {
+        template = toGray(imgData.data, off.width, x, y, TEMPLATE_SIZE);
+      }
+
+      lastX = x;
+      lastY = y;
+
+      const pct = Math.round(((si + 1) / strides.length) * 100);
+      fill.style.width      = `${pct}%`;
+      pctEl.textContent     = `${pct}%`;
+      statusEl.textContent  = `Tracking… frame ${f + 1} / ${totalFrames}`;
+
+      // Yield to the browser every 5 frames so the UI stays responsive
+      if (si % 5 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+
+    if (!autoTrackCancelled) {
+      fill.style.width      = '100%';
+      pctEl.textContent     = '100%';
+      statusEl.textContent  = 'Tracking complete!';
+      await new Promise(r => setTimeout(r, 600));
+    } else {
+      tracker.clear(); // discard partial results on cancel
+    }
+
+  } catch (err) {
+    console.error('Auto-track error:', err);
+    alert('Auto-tracking failed: ' + err.message);
+    tracker.clear();
+  } finally {
+    overlay.hidden = true;
+    goToFrame(0);
+    updateTopRow();
+    drawCurrentFrame();
+  }
+}
+
+// ── Android back button ───────────────────────────────────────────────────────
+
 if (window.Capacitor?.Plugins?.App) {
   window.Capacitor.Plugins.App.addListener('backButton', () => {
     const editorActive = document.getElementById('editor-screen').classList.contains('active');
