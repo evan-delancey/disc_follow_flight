@@ -105,17 +105,16 @@ let traceWidth   = 12;
 let traceOpacity = 1.0;
 let traceTaper   = 10; // -10 = narrow→wide, 0 = uniform, 10 = wide→narrow
 
-// Auto-trace state
-let autoTraceMode      = false; // true when video was loaded via "Auto Trace" card
-let awaitingDiscSelect = false; // true while waiting for the user to tap the disc
-let autoTrackCancelled = false; // set to true to abort a running auto-track
+// Quick Trace state
+let quickMarkMode = false; // auto-advances the video after every tap
+const QUICK_STRIDE = 3;   // frames to skip after each tap (≈ 0.1 s at 30 fps)
 
 // ── Video loading ─────────────────────────────────────────────────────────────
 
 document.getElementById('video-input-auto').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
-  autoTraceMode = true;
+  quickMarkMode = true;
   video.src = URL.createObjectURL(file);
   video.load();
 });
@@ -123,7 +122,7 @@ document.getElementById('video-input-auto').addEventListener('change', e => {
 document.getElementById('video-input-manual').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
-  autoTraceMode = false;
+  quickMarkMode = false;
   video.src = URL.createObjectURL(file);
   video.load();
 });
@@ -140,9 +139,10 @@ video.addEventListener('loadeddata', () => {
   showEditor();
   goToFrame(0);
 
-  if (autoTraceMode) {
-    awaitingDiscSelect = true;
-    document.getElementById('tap-disc-overlay').hidden = false;
+  if (quickMarkMode) {
+    document.getElementById('quick-mark-banner').hidden = false;
+    document.getElementById('status').textContent =
+      'Tap the disc — video auto-advances after each tap';
   }
 });
 
@@ -269,6 +269,24 @@ function markFromEvent(clientX, clientY) {
   tracker.add(currentFrame, x, y);
   drawCurrentFrame();
   updateTopRow();
+
+  // Quick Trace: auto-advance after every tap so the user just keeps tapping
+  if (quickMarkMode) {
+    const next = currentFrame + QUICK_STRIDE;
+    if (next < totalFrames) {
+      goToFrame(next);
+    } else {
+      finishQuickMark();
+    }
+  }
+}
+
+function finishQuickMark() {
+  quickMarkMode = false;
+  document.getElementById('quick-mark-banner').hidden = true;
+  document.getElementById('status').textContent =
+    'Quick Trace done — use Undo/Export or keep marking manually';
+  updateTopRow();
 }
 
 // ── Touch crosshair ───────────────────────────────────────────────────────────
@@ -305,13 +323,7 @@ canvas.addEventListener('touchend', e => {
   const touch = [...e.changedTouches].find(t => t.identifier === activeTouchId);
   if (touch) {
     // Crosshair is offset 80 px above the finger — use that adjusted point
-    const cx = touch.clientX;
-    const cy = touch.clientY - 80;
-    if (awaitingDiscSelect) {
-      handleDiscSelect(cx, cy);
-    } else {
-      markFromEvent(cx, cy);
-    }
+    markFromEvent(touch.clientX, touch.clientY - 80);
     hideCrosshair();
     activeTouchId = null;
   }
@@ -323,11 +335,7 @@ canvas.addEventListener('touchcancel', e => {
 }, { passive: false });
 
 canvas.addEventListener('click', e => {
-  if (awaitingDiscSelect) {
-    handleDiscSelect(e.clientX, e.clientY);
-  } else {
-    markFromEvent(e.clientX, e.clientY);
-  }
+  markFromEvent(e.clientX, e.clientY);
 });
 
 // ── Gradient swatches ─────────────────────────────────────────────────────────
@@ -414,8 +422,7 @@ document.getElementById('trace-taper').addEventListener('input', e => {
     labels[e.target.value] ?? (traceTaper > 0 ? 'Wide → Narrow' : 'Narrow → Wide');
   drawCurrentFrame();
 });
-document.getElementById('btn-cancel-export').addEventListener('click',    () => { exportCancelled    = true; });
-document.getElementById('btn-cancel-autotrack').addEventListener('click', () => { autoTrackCancelled = true; });
+document.getElementById('btn-cancel-export').addEventListener('click', () => { exportCancelled = true; });
 
 // FPS toggle (30 ↔ 60)
 document.getElementById('fps-toggle').addEventListener('click', () => {
@@ -643,20 +650,15 @@ function blobToBase64(blob) {
 // ── New Video / back navigation ───────────────────────────────────────────
 
 function goToUpload() {
-  if (tracker.keyframes.size > 0 || awaitingDiscSelect) {
+  if (tracker.keyframes.size > 0) {
     if (!confirm('Go back? Your marks will be lost.')) return;
   }
-  // Cancel any running auto-track
-  autoTrackCancelled = true;
-  awaitingDiscSelect = false;
-  autoTraceMode      = false;
-
+  quickMarkMode = false;
   tracker.clear();
   setExportReady(null);
   video.pause();
   video.src = '';
-  document.getElementById('tap-disc-overlay').hidden    = true;
-  document.getElementById('autotrack-overlay').hidden   = true;
+  document.getElementById('quick-mark-banner').hidden = true;
   document.getElementById('editor-screen').classList.remove('active');
   document.getElementById('upload-screen').classList.add('active');
   document.getElementById('video-input-auto').value   = '';
@@ -665,285 +667,13 @@ function goToUpload() {
 
 document.getElementById('btn-new-video').addEventListener('click', goToUpload);
 
-// ── Auto-tracking ─────────────────────────────────────────────────────────────
+// ── Quick Trace "Done" button ─────────────────────────────────────────────────
 
-const TEMPLATE_SIZE     = 20;  // patch size for the SSD fallback tracker
-const SEARCH_RADIUS     = 150; // search radius around velocity-predicted position (both trackers)
-const SEARCH_STEP       = 2;   // SSD candidate step (pixels)
-const AUTO_TRACK_STRIDE = 2;   // seek every Nth frame; Catmull-Rom fills the rest
-// SSD fallback: try template at each scale (disc shrinks as it flies away)
-const MATCH_SCALES      = [1.0, 0.55, 0.30];
-// Motion tracker thresholds
-const MOTION_THRESH     = 12;  // min per-pixel diff to count as real motion (above H.264 noise)
-const MOTION_MIN_WEIGHT = 200; // min total weight for a valid motion centroid
+document.getElementById('btn-quick-done').addEventListener('click', finishQuickMark);
 
-// Convert a rectangular region of image data to a flat Float32Array of greyscale values.
-function toGray(data, width, cx, cy, size) {
-  const half  = Math.floor(size / 2);
-  const patch = new Float32Array(size * size);
-  for (let dy = 0; dy < size; dy++) {
-    for (let dx = 0; dx < size; dx++) {
-      const px = cx - half + dx;
-      const py = cy - half + dy;
-      if (px < 0 || py < 0 || px >= width) continue; // edge pixels stay 0
-      const idx = (py * width + px) * 4;
-      patch[dy * size + dx] =
-        0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-    }
-  }
-  return patch;
-}
+// ── (Auto-tracking removed — pure pixel-matching is not reliable for disc golf) ──
 
-// Bilinear downsample a square Float32Array patch from fromSize×fromSize to toSize×toSize.
-function scaleTemplate(src, fromSize, toSize) {
-  if (fromSize === toSize) return src;
-  const dst = new Float32Array(toSize * toSize);
-  const r   = fromSize / toSize;
-  for (let ty = 0; ty < toSize; ty++) {
-    for (let tx = 0; tx < toSize; tx++) {
-      const fx = (tx + 0.5) * r - 0.5;
-      const fy = (ty + 0.5) * r - 0.5;
-      const x0 = Math.max(0, Math.floor(fx));
-      const y0 = Math.max(0, Math.floor(fy));
-      const x1 = Math.min(fromSize - 1, x0 + 1);
-      const y1 = Math.min(fromSize - 1, y0 + 1);
-      const wx = fx - x0, wy = fy - y0;
-      dst[ty * toSize + tx] =
-        src[y0 * fromSize + x0] * (1 - wx) * (1 - wy) +
-        src[y0 * fromSize + x1] * wx       * (1 - wy) +
-        src[y1 * fromSize + x0] * (1 - wx) * wy       +
-        src[y1 * fromSize + x1] * wx       * wy;
-    }
-  }
-  return dst;
-}
-
-// Multi-scale SSD: search for the template at each scale in MATCH_SCALES.
-// Smaller scales match a shrunken disc (further from camera).
-// predX/predY = velocity-predicted next position.
-// Returns per-pixel normalised score so scales are comparable.
-function findBestMatchMultiScale(imageData, templateFull, predX, predY) {
-  const { data, width, height } = imageData;
-  const fullSize = Math.round(Math.sqrt(templateFull.length));
-  let bestX = predX, bestY = predY, bestScore = Infinity;
-
-  for (const scale of MATCH_SCALES) {
-    const tSize  = Math.max(5, Math.round(fullSize * scale));
-    const tmpl   = scaleTemplate(templateFull, fullSize, tSize);
-    const half   = Math.floor(tSize / 2);
-    // Smaller disc = could be further from prediction → grow the search window
-    const r      = Math.round(SEARCH_RADIUS * (0.7 + 0.9 * (1 - scale)));
-    const step   = scale < 0.5 ? SEARCH_STEP + 1 : SEARCH_STEP;
-
-    const x0 = Math.max(half,              predX - r);
-    const x1 = Math.min(width  - half - 1, predX + r);
-    const y0 = Math.max(half,              predY - r);
-    const y1 = Math.min(height - half - 1, predY + r);
-
-    let scaleBest = Infinity;
-    let sBestX = predX, sBestY = predY;
-
-    for (let cy = y0; cy <= y1; cy += step) {
-      for (let cx = x0; cx <= x1; cx += step) {
-        let ssd = 0;
-        const cap = scaleBest * tSize * tSize; // per-pixel threshold → raw threshold
-        outer: for (let dy = 0; dy < tSize; dy++) {
-          for (let dx = 0; dx < tSize; dx++) {
-            const px  = cx - half + dx;
-            const py  = cy - half + dy;
-            if (px < 0 || py < 0 || px >= width || py >= height) continue;
-            const i   = (py * width + px) * 4;
-            const g   = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-            const d   = g - tmpl[dy * tSize + dx];
-            ssd += d * d;
-            if (ssd >= cap) break outer;
-          }
-        }
-        const pp = ssd / (tSize * tSize); // normalise → per-pixel
-        if (pp < scaleBest) { scaleBest = pp; sBestX = cx; sBestY = cy; }
-      }
-    }
-
-    if (scaleBest < bestScore) { bestScore = scaleBest; bestX = sBestX; bestY = sBestY; }
-  }
-
-  return { x: bestX, y: bestY };
-}
-
-// Motion tracker: frame-differencing approach that finds where pixels changed most.
-// Two-pass design: (1) coarse scan to locate the brightest-change peak; (2) fine
-// weighted centroid around that peak to get the disc centre.
-//
-// Why this beats pure SSD:
-//  - Scale-invariant — finds a 5-px disc just as well as a 50-px one
-//  - Appearance-invariant — works regardless of disc colour, angle, or lighting
-//  - The disc creates a compact, high-contrast motion blob that stands out from the
-//    diffuse body motion of the thrower
-//
-// prevData/currData are raw Uint8ClampedArray from getImageData.
-// Returns {x, y} or null when the signal is too weak (disc barely moving → SSD takes over).
-function trackByMotion(prevData, currData, width, height, predX, predY) {
-  const r  = SEARCH_RADIUS;
-  const x0 = Math.max(0,          predX - r);
-  const x1 = Math.min(width  - 1, predX + r);
-  const y0 = Math.max(0,          predY - r);
-  const y1 = Math.min(height - 1, predY + r);
-
-  // ── Pass 1: find the pixel with the maximum diff (coarse, step 2) ─────────
-  let maxD = MOTION_THRESH, peakX = -1, peakY = -1;
-  for (let py = y0; py <= y1; py += 2) {
-    for (let px = x0; px <= x1; px += 2) {
-      const i  = (py * width + px) * 4;
-      const gP = 0.299 * prevData[i] + 0.587 * prevData[i + 1] + 0.114 * prevData[i + 2];
-      const gC = 0.299 * currData[i] + 0.587 * currData[i + 1] + 0.114 * currData[i + 2];
-      const d  = Math.abs(gC - gP);
-      if (d > maxD) { maxD = d; peakX = px; peakY = py; }
-    }
-  }
-  if (peakX === -1) return null; // nothing moved above the threshold
-
-  // ── Pass 2: weighted centroid in a 15-px neighbourhood of the peak ────────
-  const nr  = 15;
-  const nx0 = Math.max(0,          peakX - nr);
-  const nx1 = Math.min(width  - 1, peakX + nr);
-  const ny0 = Math.max(0,          peakY - nr);
-  const ny1 = Math.min(height - 1, peakY + nr);
-
-  let sumX = 0, sumY = 0, sumW = 0;
-  for (let py = ny0; py <= ny1; py++) {
-    for (let px = nx0; px <= nx1; px++) {
-      const i  = (py * width + px) * 4;
-      const gP = 0.299 * prevData[i] + 0.587 * prevData[i + 1] + 0.114 * prevData[i + 2];
-      const gC = 0.299 * currData[i] + 0.587 * currData[i + 1] + 0.114 * currData[i + 2];
-      const d  = Math.abs(gC - gP);
-      if (d > MOTION_THRESH) { sumX += px * d; sumY += py * d; sumW += d; }
-    }
-  }
-  if (sumW < MOTION_MIN_WEIGHT) return null;
-  return { x: Math.round(sumX / sumW), y: Math.round(sumY / sumW) };
-}
-
-// Convert canvas-space clientX/Y to video-pixel coords then begin auto-tracking.
-function handleDiscSelect(clientX, clientY) {
-  if (!awaitingDiscSelect) return;
-  awaitingDiscSelect = false;
-  document.getElementById('tap-disc-overlay').hidden = true;
-
-  const rect = canvas.getBoundingClientRect();
-  const x    = Math.round((clientX - rect.left) * (canvas.width  / rect.width));
-  const y    = Math.round((clientY - rect.top)  * (canvas.height / rect.height));
-
-  autoTrackDisc(x, y);
-}
-
-// Walk through every AUTO_TRACK_STRIDE-th frame running template matching,
-// then let Catmull-Rom interpolate between the found keyframes.
-async function autoTrackDisc(startX, startY) {
-  autoTrackCancelled = false;
-
-  const overlay  = document.getElementById('autotrack-overlay');
-  const statusEl = document.getElementById('autotrack-status');
-  const fill     = document.getElementById('autotrack-bar-fill');
-  const pctEl    = document.getElementById('autotrack-pct');
-
-  overlay.hidden        = false;
-  statusEl.textContent  = 'Analysing disc…';
-  fill.style.width      = '0%';
-  pctEl.textContent     = '0%';
-
-  // Use a dedicated offscreen canvas so we never corrupt the visible canvas
-  // during frame-by-frame seeking.
-  const off    = document.createElement('canvas');
-  off.width    = canvas.width;
-  off.height   = canvas.height;
-  const offCtx = off.getContext('2d', { willReadFrequently: true });
-
-  try {
-    // ── Capture template from frame 0 ──────────────────────────────────────
-    await seekVideoTo(0);
-    offCtx.drawImage(video, 0, 0, off.width, off.height);
-    let imgData  = offCtx.getImageData(0, 0, off.width, off.height);
-    let template = toGray(imgData.data, off.width, startX, startY, TEMPLATE_SIZE);
-
-    tracker.add(0, startX, startY);
-    let lastX = startX, lastY = startY;
-    let prevX = startX, prevY = startY; // for velocity estimation
-    let prevImgData = null;             // previous frame for motion diff
-
-    // Build the list of frames we'll actually seek to (every Nth + last frame)
-    const strides = [];
-    for (let f = AUTO_TRACK_STRIDE; f < totalFrames; f += AUTO_TRACK_STRIDE) strides.push(f);
-    const lastF = totalFrames - 1;
-    if (strides.length === 0 || strides[strides.length - 1] !== lastF) strides.push(lastF);
-
-    // ── Main tracking loop ─────────────────────────────────────────────────
-    for (let si = 0; si < strides.length; si++) {
-      if (autoTrackCancelled) break;
-
-      const f = strides[si];
-      await seekVideoTo(f);
-      offCtx.drawImage(video, 0, 0, off.width, off.height);
-      imgData = offCtx.getImageData(0, 0, off.width, off.height);
-
-      // Extrapolate where the disc will be based on its recent velocity.
-      // Dampen by 0.85 so we don't overshoot on sharp curves.
-      const vx    = (lastX - prevX) * 0.85;
-      const vy    = (lastY - prevY) * 0.85;
-      const predX = Math.max(0, Math.min(off.width  - 1, Math.round(lastX + vx)));
-      const predY = Math.max(0, Math.min(off.height - 1, Math.round(lastY + vy)));
-
-      // ── Primary: motion-based tracker ─────────────────────────────────────
-      // Finds the brightest-change peak in the search window — works for any
-      // disc size/colour and is not confused by appearance changes.
-      const motionPos = prevImgData
-        ? trackByMotion(prevImgData.data, imgData.data, off.width, off.height, predX, predY)
-        : null;
-
-      // ── Fallback: multi-scale SSD ─────────────────────────────────────────
-      // Used when the disc is barely moving (decelerating at end of flight) and
-      // the motion signal is too weak to be reliable.
-      const { x, y } = motionPos ?? findBestMatchMultiScale(imgData, template, predX, predY);
-      tracker.add(f, x, y);
-
-      // Only refresh the SSD template when motion tracking gave a confident result
-      // (the centroid is exactly on the disc, so the template stays accurate).
-      if (motionPos && si > 0 && si % 20 === 0) {
-        template = toGray(imgData.data, off.width, x, y, TEMPLATE_SIZE);
-      }
-
-      prevImgData = imgData;
-      prevX = lastX; prevY = lastY;
-      lastX = x;     lastY = y;
-
-      const pct = Math.round(((si + 1) / strides.length) * 100);
-      fill.style.width      = `${pct}%`;
-      pctEl.textContent     = `${pct}%`;
-      statusEl.textContent  = `Tracking… frame ${f + 1} / ${totalFrames}`;
-
-      // Yield to the browser every 5 frames so the UI stays responsive
-      if (si % 5 === 0) await new Promise(r => setTimeout(r, 0));
-    }
-
-    if (!autoTrackCancelled) {
-      fill.style.width      = '100%';
-      pctEl.textContent     = '100%';
-      statusEl.textContent  = 'Tracking complete!';
-      await new Promise(r => setTimeout(r, 600));
-    } else {
-      tracker.clear(); // discard partial results on cancel
-    }
-
-  } catch (err) {
-    console.error('Auto-track error:', err);
-    alert('Auto-tracking failed: ' + err.message);
-    tracker.clear();
-  } finally {
-    overlay.hidden = true;
-    goToFrame(0);
-    updateTopRow();
-    drawCurrentFrame();
-  }
-}
+// ── Android back button ───────────────────────────────────────────────────────
 
 // ── Android back button ───────────────────────────────────────────────────────
 

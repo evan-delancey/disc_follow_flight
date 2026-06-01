@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="theme-color" content="#111">
   <title>DiscTrail</title>
-  <link rel="stylesheet" href="style.css?v=20260533">
+  <link rel="stylesheet" href="style.css?v=20260534">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -30,8 +30,8 @@
       <div class="mode-cards">
         <label class="mode-card" for="video-input-auto">
           <span class="mode-icon">&#9889;</span>
-          <span class="mode-title">Auto Trace</span>
-          <span class="mode-desc">Tap the disc once — app tracks the flight</span>
+          <span class="mode-title">Quick Trace</span>
+          <span class="mode-desc">Tap the disc — video auto-advances so you trace in seconds</span>
         </label>
         <label class="mode-card" for="video-input-manual">
           <span class="mode-icon">&#9998;</span>
@@ -50,16 +50,18 @@
 
     <div id="canvas-wrap">
       <canvas id="canvas"></canvas>
-      <!-- Shown in auto-trace mode while waiting for the user to tap the disc -->
-      <div id="tap-disc-overlay" hidden>
-        <div id="tap-disc-msg">
-          <span class="tap-disc-icon">&#127919;</span>
-          <p>Tap the disc in this frame to begin auto-tracking</p>
-        </div>
-      </div>
     </div>
 
     <div id="controls">
+
+      <!-- Quick Trace banner — visible only in Quick Trace mode -->
+      <div id="quick-mark-banner" hidden>
+        <div class="qm-text">
+          <strong>⚡ Quick Trace</strong>
+          <span>Tap the disc — video auto-advances 3 frames</span>
+        </div>
+        <button id="btn-quick-done">Done ✓</button>
+      </div>
 
       <div id="brand-bar">
         <button id="btn-new-video">&#8592; New</button>
@@ -118,16 +120,6 @@
     </div>
   </div>
 
-  <!-- Auto-track progress overlay -->
-  <div id="autotrack-overlay" hidden>
-    <div id="autotrack-card">
-      <p id="autotrack-status">Tracking disc…</p>
-      <div id="autotrack-bar-wrap"><div id="autotrack-bar-fill"></div></div>
-      <p id="autotrack-pct">0%</p>
-      <button id="btn-cancel-autotrack">Cancel</button>
-    </div>
-  </div>
-
   <!-- Export progress overlay -->
   <div id="export-overlay" hidden>
     <div id="export-card">
@@ -152,6 +144,6 @@
     <line x1="58" y1="40" x2="76" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/>
   </svg>
 
-  <script src="app.js?v=20260533"></script>
+  <script src="app.js?v=20260534"></script>
 </body>
 </html>

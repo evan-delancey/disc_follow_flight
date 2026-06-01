@@ -579,118 +579,53 @@ html, body {
 #video-input-auto,
 #video-input-manual { display: none; }
 
-/* ── Tap-disc overlay (auto-trace mode) ──────────────────────────────────── */
+/* ── Quick Trace banner ───────────────────────────────────────────────────── */
 
-#tap-disc-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.50);
+#quick-mark-banner {
   display: flex;
   align-items: center;
-  justify-content: center;
-  z-index: 20;
-  pointer-events: none;  /* let touches through to the canvas */
-}
-
-#tap-disc-overlay[hidden] { display: none; }
-
-#tap-disc-msg {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 20px 24px;
-  background: rgba(255, 255, 255, 0.13);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  padding: 8px 12px;
+  background: var(--orange-light);
+  border: 1.5px solid var(--orange);
+  border-radius: var(--radius-sm);
 }
 
-.tap-disc-icon {
-  font-size: 34px;
-  line-height: 1;
-}
+#quick-mark-banner[hidden] { display: none; }
 
-#tap-disc-msg p {
-  font-size: 15px;
-  font-weight: 600;
-  color: #fff;
-  text-align: center;
-  max-width: 210px;
-  line-height: 1.5;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
-}
-
-/* ── Auto-track progress overlay ─────────────────────────────────────────── */
-
-#autotrack-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-#autotrack-overlay[hidden] { display: none; }
-
-#autotrack-card {
-  background: var(--surface);
-  border-radius: 20px;
-  padding: 28px 28px 22px;
-  width: min(320px, 88vw);
+.qm-text {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  box-shadow: var(--shadow-md);
+  gap: 1px;
 }
 
-#autotrack-status {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-  text-align: center;
+.qm-text strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--orange-dark);
 }
 
-#autotrack-bar-wrap {
-  width: 100%;
-  height: 8px;
-  background: var(--border);
-  border-radius: 4px;
-  overflow: hidden;
+.qm-text span {
+  font-size: 11px;
+  color: var(--text-2);
 }
 
-#autotrack-bar-fill {
-  height: 100%;
-  width: 0%;
+#btn-quick-done {
+  flex-shrink: 0;
+  padding: 7px 14px;
   background: var(--orange);
-  border-radius: 4px;
-  transition: width 0.1s linear;
-}
-
-#autotrack-pct {
+  color: #fff;
+  border: none;
+  border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--orange);
-}
-
-#btn-cancel-autotrack {
-  margin-top: 4px;
-  padding: 8px 24px;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-2);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   font-family: inherit;
 }
 
-#btn-cancel-autotrack:active { background: var(--border); }
+#btn-quick-done:active { background: var(--orange-dark); }
 
 /* Touch crosshair */
 #crosshair {
