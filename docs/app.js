@@ -667,13 +667,15 @@ document.getElementById('btn-new-video').addEventListener('click', goToUpload);
 
 // ── Auto-tracking ─────────────────────────────────────────────────────────────
 
-const TEMPLATE_SIZE     = 20;  // patch size — smaller = focused on disc, less background
-const SEARCH_RADIUS     = 160; // base search radius around the velocity-predicted position
-const SEARCH_STEP       = 2;   // candidate step (pixels)
+const TEMPLATE_SIZE     = 20;  // patch size for the SSD fallback tracker
+const SEARCH_RADIUS     = 150; // search radius around velocity-predicted position (both trackers)
+const SEARCH_STEP       = 2;   // SSD candidate step (pixels)
 const AUTO_TRACK_STRIDE = 2;   // seek every Nth frame; Catmull-Rom fills the rest
-// Disc shrinks as it flies away — search for the template at each of these scale factors.
-// 1.0 = disc near camera, 0.55 = mid-distance, 0.30 = far away
-const MATCH_SCALES = [1.0, 0.55, 0.30];
+// SSD fallback: try template at each scale (disc shrinks as it flies away)
+const MATCH_SCALES      = [1.0, 0.55, 0.30];
+// Motion tracker thresholds
+const MOTION_THRESH     = 12;  // min per-pixel diff to count as real motion (above H.264 noise)
+const MOTION_MIN_WEIGHT = 200; // min total weight for a valid motion centroid
 
 // Convert a rectangular region of image data to a flat Float32Array of greyscale values.
 function toGray(data, width, cx, cy, size) {
@@ -768,6 +770,59 @@ function findBestMatchMultiScale(imageData, templateFull, predX, predY) {
   return { x: bestX, y: bestY };
 }
 
+// Motion tracker: frame-differencing approach that finds where pixels changed most.
+// Two-pass design: (1) coarse scan to locate the brightest-change peak; (2) fine
+// weighted centroid around that peak to get the disc centre.
+//
+// Why this beats pure SSD:
+//  - Scale-invariant — finds a 5-px disc just as well as a 50-px one
+//  - Appearance-invariant — works regardless of disc colour, angle, or lighting
+//  - The disc creates a compact, high-contrast motion blob that stands out from the
+//    diffuse body motion of the thrower
+//
+// prevData/currData are raw Uint8ClampedArray from getImageData.
+// Returns {x, y} or null when the signal is too weak (disc barely moving → SSD takes over).
+function trackByMotion(prevData, currData, width, height, predX, predY) {
+  const r  = SEARCH_RADIUS;
+  const x0 = Math.max(0,          predX - r);
+  const x1 = Math.min(width  - 1, predX + r);
+  const y0 = Math.max(0,          predY - r);
+  const y1 = Math.min(height - 1, predY + r);
+
+  // ── Pass 1: find the pixel with the maximum diff (coarse, step 2) ─────────
+  let maxD = MOTION_THRESH, peakX = -1, peakY = -1;
+  for (let py = y0; py <= y1; py += 2) {
+    for (let px = x0; px <= x1; px += 2) {
+      const i  = (py * width + px) * 4;
+      const gP = 0.299 * prevData[i] + 0.587 * prevData[i + 1] + 0.114 * prevData[i + 2];
+      const gC = 0.299 * currData[i] + 0.587 * currData[i + 1] + 0.114 * currData[i + 2];
+      const d  = Math.abs(gC - gP);
+      if (d > maxD) { maxD = d; peakX = px; peakY = py; }
+    }
+  }
+  if (peakX === -1) return null; // nothing moved above the threshold
+
+  // ── Pass 2: weighted centroid in a 15-px neighbourhood of the peak ────────
+  const nr  = 15;
+  const nx0 = Math.max(0,          peakX - nr);
+  const nx1 = Math.min(width  - 1, peakX + nr);
+  const ny0 = Math.max(0,          peakY - nr);
+  const ny1 = Math.min(height - 1, peakY + nr);
+
+  let sumX = 0, sumY = 0, sumW = 0;
+  for (let py = ny0; py <= ny1; py++) {
+    for (let px = nx0; px <= nx1; px++) {
+      const i  = (py * width + px) * 4;
+      const gP = 0.299 * prevData[i] + 0.587 * prevData[i + 1] + 0.114 * prevData[i + 2];
+      const gC = 0.299 * currData[i] + 0.587 * currData[i + 1] + 0.114 * currData[i + 2];
+      const d  = Math.abs(gC - gP);
+      if (d > MOTION_THRESH) { sumX += px * d; sumY += py * d; sumW += d; }
+    }
+  }
+  if (sumW < MOTION_MIN_WEIGHT) return null;
+  return { x: Math.round(sumX / sumW), y: Math.round(sumY / sumW) };
+}
+
 // Convert canvas-space clientX/Y to video-pixel coords then begin auto-tracking.
 function handleDiscSelect(clientX, clientY) {
   if (!awaitingDiscSelect) return;
@@ -813,6 +868,7 @@ async function autoTrackDisc(startX, startY) {
     tracker.add(0, startX, startY);
     let lastX = startX, lastY = startY;
     let prevX = startX, prevY = startY; // for velocity estimation
+    let prevImgData = null;             // previous frame for motion diff
 
     // Build the list of frames we'll actually seek to (every Nth + last frame)
     const strides = [];
@@ -836,15 +892,26 @@ async function autoTrackDisc(startX, startY) {
       const predX = Math.max(0, Math.min(off.width  - 1, Math.round(lastX + vx)));
       const predY = Math.max(0, Math.min(off.height - 1, Math.round(lastY + vy)));
 
-      const { x, y } = findBestMatchMultiScale(imgData, template, predX, predY);
+      // ── Primary: motion-based tracker ─────────────────────────────────────
+      // Finds the brightest-change peak in the search window — works for any
+      // disc size/colour and is not confused by appearance changes.
+      const motionPos = prevImgData
+        ? trackByMotion(prevImgData.data, imgData.data, off.width, off.height, predX, predY)
+        : null;
+
+      // ── Fallback: multi-scale SSD ─────────────────────────────────────────
+      // Used when the disc is barely moving (decelerating at end of flight) and
+      // the motion signal is too weak to be reliable.
+      const { x, y } = motionPos ?? findBestMatchMultiScale(imgData, template, predX, predY);
       tracker.add(f, x, y);
 
-      // Refresh template every 15 tracked frames — keeps up with lighting/rotation changes.
-      // Skip the very first refresh so we don't immediately lose the initial disc appearance.
-      if (si > 0 && si % 15 === 0) {
+      // Only refresh the SSD template when motion tracking gave a confident result
+      // (the centroid is exactly on the disc, so the template stays accurate).
+      if (motionPos && si > 0 && si % 20 === 0) {
         template = toGray(imgData.data, off.width, x, y, TEMPLATE_SIZE);
       }
 
+      prevImgData = imgData;
       prevX = lastX; prevY = lastY;
       lastX = x;     lastY = y;
 
