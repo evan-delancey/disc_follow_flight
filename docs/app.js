@@ -667,10 +667,13 @@ document.getElementById('btn-new-video').addEventListener('click', goToUpload);
 
 // ── Auto-tracking ─────────────────────────────────────────────────────────────
 
-const TEMPLATE_SIZE     = 28;  // pixel side-length of the patch captured from the disc
-const SEARCH_RADIUS     = 70;  // max pixel radius to search around last known position
-const SEARCH_STEP       = 2;   // step size when scanning candidates (larger = faster but coarser)
-const AUTO_TRACK_STRIDE = 3;   // seek every Nth frame; Catmull-Rom fills the rest
+const TEMPLATE_SIZE     = 20;  // patch size — smaller = focused on disc, less background
+const SEARCH_RADIUS     = 160; // base search radius around the velocity-predicted position
+const SEARCH_STEP       = 2;   // candidate step (pixels)
+const AUTO_TRACK_STRIDE = 2;   // seek every Nth frame; Catmull-Rom fills the rest
+// Disc shrinks as it flies away — search for the template at each of these scale factors.
+// 1.0 = disc near camera, 0.55 = mid-distance, 0.30 = far away
+const MATCH_SCALES = [1.0, 0.55, 0.30];
 
 // Convert a rectangular region of image data to a flat Float32Array of greyscale values.
 function toGray(data, width, cx, cy, size) {
@@ -689,35 +692,79 @@ function toGray(data, width, cx, cy, size) {
   return patch;
 }
 
-// Find the position in imageData that best matches the template patch using SSD.
-function findBestMatchSSD(imageData, template, lastX, lastY) {
-  const { data, width, height } = imageData;
-  const size = Math.round(Math.sqrt(template.length));
-  const half = Math.floor(size / 2);
-  let bestX = lastX, bestY = lastY, bestSSD = Infinity;
-
-  const x0 = Math.max(half,             lastX - SEARCH_RADIUS);
-  const x1 = Math.min(width  - half - 1, lastX + SEARCH_RADIUS);
-  const y0 = Math.max(half,             lastY - SEARCH_RADIUS);
-  const y1 = Math.min(height - half - 1, lastY + SEARCH_RADIUS);
-
-  for (let cy = y0; cy <= y1; cy += SEARCH_STEP) {
-    for (let cx = x0; cx <= x1; cx += SEARCH_STEP) {
-      let ssd = 0;
-      outer: for (let dy = 0; dy < size; dy++) {
-        for (let dx = 0; dx < size; dx++) {
-          const px  = cx - half + dx;
-          const py  = cy - half + dy;
-          const idx = (py * width + px) * 4;
-          const g   = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-          const d   = g - template[dy * size + dx];
-          ssd += d * d;
-          if (ssd >= bestSSD) break outer; // prune early
-        }
-      }
-      if (ssd < bestSSD) { bestSSD = ssd; bestX = cx; bestY = cy; }
+// Bilinear downsample a square Float32Array patch from fromSize×fromSize to toSize×toSize.
+function scaleTemplate(src, fromSize, toSize) {
+  if (fromSize === toSize) return src;
+  const dst = new Float32Array(toSize * toSize);
+  const r   = fromSize / toSize;
+  for (let ty = 0; ty < toSize; ty++) {
+    for (let tx = 0; tx < toSize; tx++) {
+      const fx = (tx + 0.5) * r - 0.5;
+      const fy = (ty + 0.5) * r - 0.5;
+      const x0 = Math.max(0, Math.floor(fx));
+      const y0 = Math.max(0, Math.floor(fy));
+      const x1 = Math.min(fromSize - 1, x0 + 1);
+      const y1 = Math.min(fromSize - 1, y0 + 1);
+      const wx = fx - x0, wy = fy - y0;
+      dst[ty * toSize + tx] =
+        src[y0 * fromSize + x0] * (1 - wx) * (1 - wy) +
+        src[y0 * fromSize + x1] * wx       * (1 - wy) +
+        src[y1 * fromSize + x0] * (1 - wx) * wy       +
+        src[y1 * fromSize + x1] * wx       * wy;
     }
   }
+  return dst;
+}
+
+// Multi-scale SSD: search for the template at each scale in MATCH_SCALES.
+// Smaller scales match a shrunken disc (further from camera).
+// predX/predY = velocity-predicted next position.
+// Returns per-pixel normalised score so scales are comparable.
+function findBestMatchMultiScale(imageData, templateFull, predX, predY) {
+  const { data, width, height } = imageData;
+  const fullSize = Math.round(Math.sqrt(templateFull.length));
+  let bestX = predX, bestY = predY, bestScore = Infinity;
+
+  for (const scale of MATCH_SCALES) {
+    const tSize  = Math.max(5, Math.round(fullSize * scale));
+    const tmpl   = scaleTemplate(templateFull, fullSize, tSize);
+    const half   = Math.floor(tSize / 2);
+    // Smaller disc = could be further from prediction → grow the search window
+    const r      = Math.round(SEARCH_RADIUS * (0.7 + 0.9 * (1 - scale)));
+    const step   = scale < 0.5 ? SEARCH_STEP + 1 : SEARCH_STEP;
+
+    const x0 = Math.max(half,              predX - r);
+    const x1 = Math.min(width  - half - 1, predX + r);
+    const y0 = Math.max(half,              predY - r);
+    const y1 = Math.min(height - half - 1, predY + r);
+
+    let scaleBest = Infinity;
+    let sBestX = predX, sBestY = predY;
+
+    for (let cy = y0; cy <= y1; cy += step) {
+      for (let cx = x0; cx <= x1; cx += step) {
+        let ssd = 0;
+        const cap = scaleBest * tSize * tSize; // per-pixel threshold → raw threshold
+        outer: for (let dy = 0; dy < tSize; dy++) {
+          for (let dx = 0; dx < tSize; dx++) {
+            const px  = cx - half + dx;
+            const py  = cy - half + dy;
+            if (px < 0 || py < 0 || px >= width || py >= height) continue;
+            const i   = (py * width + px) * 4;
+            const g   = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            const d   = g - tmpl[dy * tSize + dx];
+            ssd += d * d;
+            if (ssd >= cap) break outer;
+          }
+        }
+        const pp = ssd / (tSize * tSize); // normalise → per-pixel
+        if (pp < scaleBest) { scaleBest = pp; sBestX = cx; sBestY = cy; }
+      }
+    }
+
+    if (scaleBest < bestScore) { bestScore = scaleBest; bestX = sBestX; bestY = sBestY; }
+  }
+
   return { x: bestX, y: bestY };
 }
 
@@ -765,6 +812,7 @@ async function autoTrackDisc(startX, startY) {
 
     tracker.add(0, startX, startY);
     let lastX = startX, lastY = startY;
+    let prevX = startX, prevY = startY; // for velocity estimation
 
     // Build the list of frames we'll actually seek to (every Nth + last frame)
     const strides = [];
@@ -781,16 +829,24 @@ async function autoTrackDisc(startX, startY) {
       offCtx.drawImage(video, 0, 0, off.width, off.height);
       imgData = offCtx.getImageData(0, 0, off.width, off.height);
 
-      const { x, y } = findBestMatchSSD(imgData, template, lastX, lastY);
+      // Extrapolate where the disc will be based on its recent velocity.
+      // Dampen by 0.85 so we don't overshoot on sharp curves.
+      const vx    = (lastX - prevX) * 0.85;
+      const vy    = (lastY - prevY) * 0.85;
+      const predX = Math.max(0, Math.min(off.width  - 1, Math.round(lastX + vx)));
+      const predY = Math.max(0, Math.min(off.height - 1, Math.round(lastY + vy)));
+
+      const { x, y } = findBestMatchMultiScale(imgData, template, predX, predY);
       tracker.add(f, x, y);
 
-      // Refresh template every ~10 tracked frames so it adapts to rotation/lighting
-      if (si % 10 === 0) {
+      // Refresh template every 15 tracked frames — keeps up with lighting/rotation changes.
+      // Skip the very first refresh so we don't immediately lose the initial disc appearance.
+      if (si > 0 && si % 15 === 0) {
         template = toGray(imgData.data, off.width, x, y, TEMPLATE_SIZE);
       }
 
-      lastX = x;
-      lastY = y;
+      prevX = lastX; prevY = lastY;
+      lastX = x;     lastY = y;
 
       const pct = Math.round(((si + 1) / strides.length) * 100);
       fill.style.width      = `${pct}%`;
