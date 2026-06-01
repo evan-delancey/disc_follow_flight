@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="theme-color" content="#111">
   <title>DiscTrail</title>
-  <link rel="stylesheet" href="style.css?v=20260534">
+  <link rel="stylesheet" href="style.css?v=20260535">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -27,20 +27,8 @@
       <h1>Disc<span class="brand-accent">Trail</span></h1>
       <div class="upload-divider"></div>
       <p class="tagline">Give flair to your disc golf shots — allow everyone to see the flight of your disc.</p>
-      <div class="mode-cards">
-        <label class="mode-card" for="video-input-auto">
-          <span class="mode-icon">&#9889;</span>
-          <span class="mode-title">Quick Trace</span>
-          <span class="mode-desc">Tap the disc — video auto-advances so you trace in seconds</span>
-        </label>
-        <label class="mode-card" for="video-input-manual">
-          <span class="mode-icon">&#9998;</span>
-          <span class="mode-title">Manual Trace</span>
-          <span class="mode-desc">Mark the disc position frame by frame</span>
-        </label>
-      </div>
-      <input type="file" id="video-input-auto"   accept="video/*">
-      <input type="file" id="video-input-manual" accept="video/*">
+      <label class="upload-btn" for="video-input">Choose Video</label>
+      <input type="file" id="video-input" accept="video/*">
       <p class="hint">Pick a throw from your camera roll</p>
     </div>
   </div>
@@ -53,15 +41,6 @@
     </div>
 
     <div id="controls">
-
-      <!-- Quick Trace banner — visible only in Quick Trace mode -->
-      <div id="quick-mark-banner" hidden>
-        <div class="qm-text">
-          <strong>⚡ Quick Trace</strong>
-          <span>Tap the disc — video auto-advances 3 frames</span>
-        </div>
-        <button id="btn-quick-done">Done ✓</button>
-      </div>
 
       <div id="brand-bar">
         <button id="btn-new-video">&#8592; New</button>
@@ -144,6 +123,6 @@
     <line x1="58" y1="40" x2="76" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/>
   </svg>
 
-  <script src="app.js?v=20260534"></script>
+  <script src="app.js?v=20260535"></script>
 </body>
 </html>

@@ -105,24 +105,11 @@ let traceWidth   = 12;
 let traceOpacity = 1.0;
 let traceTaper   = 10; // -10 = narrow→wide, 0 = uniform, 10 = wide→narrow
 
-// Quick Trace state
-let quickMarkMode = false; // auto-advances the video after every tap
-const QUICK_STRIDE = 3;   // frames to skip after each tap (≈ 0.1 s at 30 fps)
-
 // ── Video loading ─────────────────────────────────────────────────────────────
 
-document.getElementById('video-input-auto').addEventListener('change', e => {
+document.getElementById('video-input').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
-  quickMarkMode = true;
-  video.src = URL.createObjectURL(file);
-  video.load();
-});
-
-document.getElementById('video-input-manual').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  quickMarkMode = false;
   video.src = URL.createObjectURL(file);
   video.load();
 });
@@ -138,12 +125,6 @@ video.addEventListener('loadeddata', () => {
   setExportReady(null);
   showEditor();
   goToFrame(0);
-
-  if (quickMarkMode) {
-    document.getElementById('quick-mark-banner').hidden = false;
-    document.getElementById('status').textContent =
-      'Tap the disc — video auto-advances after each tap';
-  }
 });
 
 function showEditor() {
@@ -268,24 +249,6 @@ function markFromEvent(clientX, clientY) {
   const y     = Math.round((clientY - rect.top)   * (canvas.height / rect.height));
   tracker.add(currentFrame, x, y);
   drawCurrentFrame();
-  updateTopRow();
-
-  // Quick Trace: auto-advance after every tap so the user just keeps tapping
-  if (quickMarkMode) {
-    const next = currentFrame + QUICK_STRIDE;
-    if (next < totalFrames) {
-      goToFrame(next);
-    } else {
-      finishQuickMark();
-    }
-  }
-}
-
-function finishQuickMark() {
-  quickMarkMode = false;
-  document.getElementById('quick-mark-banner').hidden = true;
-  document.getElementById('status').textContent =
-    'Quick Trace done — use Undo/Export or keep marking manually';
   updateTopRow();
 }
 
@@ -653,25 +616,16 @@ function goToUpload() {
   if (tracker.keyframes.size > 0) {
     if (!confirm('Go back? Your marks will be lost.')) return;
   }
-  quickMarkMode = false;
   tracker.clear();
   setExportReady(null);
   video.pause();
   video.src = '';
-  document.getElementById('quick-mark-banner').hidden = true;
   document.getElementById('editor-screen').classList.remove('active');
   document.getElementById('upload-screen').classList.add('active');
-  document.getElementById('video-input-auto').value   = '';
-  document.getElementById('video-input-manual').value = '';
+  document.getElementById('video-input').value = '';
 }
 
 document.getElementById('btn-new-video').addEventListener('click', goToUpload);
-
-// ── Quick Trace "Done" button ─────────────────────────────────────────────────
-
-document.getElementById('btn-quick-done').addEventListener('click', finishQuickMark);
-
-// ── (Auto-tracking removed — pure pixel-matching is not reliable for disc golf) ──
 
 // ── Android back button ───────────────────────────────────────────────────────
 
