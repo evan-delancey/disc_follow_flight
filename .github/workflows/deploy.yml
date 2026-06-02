@@ -44,6 +44,11 @@ jobs:
           # Also add login keychain to search list so both keychains are checked
           security list-keychains -d user -s build.keychain ~/Library/Keychains/login.keychain-db
 
+      - name: Install Provisioning Profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/DiscTrail_App_Store.mobileprovision
+
       - name: Archive
         run: |
           cd ios/App
