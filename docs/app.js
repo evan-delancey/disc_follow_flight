@@ -101,6 +101,8 @@ let totalFrames  = 0;
 let currentFrame = 0;
 let seeking      = false;
 let seekTarget   = null;
+let seekAttempts = 0;
+const MAX_SEEK_ATTEMPTS = 3;
 let traceWidth   = 12;
 let traceOpacity = 1.0;
 let traceTaper   = 10; // -10 = narrow→wide, 0 = uniform, 10 = wide→narrow
@@ -144,11 +146,16 @@ function goToFrame(f) {
 
 function doSeek() {
   seeking = true;
+  seekAttempts++;
   const targetTime = seekTarget / fps;
   // If already at the right time the browser won't fire 'seeked' — handle now.
   if (Math.abs(video.currentTime - targetTime) < 0.001) {
     seeking = false;
     seekTarget = null;
+    seekAttempts = 0;
+    currentFrame = Math.round(video.currentTime * fps);
+    scrubber.value = currentFrame;
+    updateTopRow();
     drawCurrentFrame();
     return;
   }
@@ -156,13 +163,20 @@ function doSeek() {
 }
 
 video.addEventListener('seeked', () => {
-  // If target moved while we were seeking, seek again.
-  if (seekTarget !== null && Math.round(video.currentTime * fps) !== seekTarget) {
+  const actualFrame = Math.round(video.currentTime * fps);
+  // On iOS, WKWebView snaps seeks to keyframes — retry up to MAX_SEEK_ATTEMPTS,
+  // then accept wherever the video landed to avoid an infinite loop.
+  if (seekTarget !== null && actualFrame !== seekTarget && seekAttempts < MAX_SEEK_ATTEMPTS) {
     doSeek();
     return;
   }
   seeking = false;
   seekTarget = null;
+  seekAttempts = 0;
+  // Always sync currentFrame to the actual decoded position so marks stay aligned.
+  currentFrame = actualFrame;
+  scrubber.value = currentFrame;
+  updateTopRow();
   drawCurrentFrame();
 });
 
@@ -324,7 +338,15 @@ GRADIENTS.forEach((g, i) => {
 
 const scrubber = document.getElementById('scrubber');
 
-scrubber.addEventListener('input', () => goToFrame(Number(scrubber.value)));
+// Debounce scrubber: update UI immediately but only seek video every 80 ms
+let scrubTimer = null;
+scrubber.addEventListener('input', () => {
+  const f = Number(scrubber.value);
+  currentFrame = f;
+  updateTopRow();
+  clearTimeout(scrubTimer);
+  scrubTimer = setTimeout(() => goToFrame(f), 80);
+});
 
 document.getElementById('btn-prev').addEventListener('click',  () => goToFrame(currentFrame - 1));
 document.getElementById('btn-next').addEventListener('click',  () => goToFrame(currentFrame + 1));
@@ -476,82 +498,124 @@ async function exportVideo() {
   pctEl.textContent = '0%';
   exportBtn.disabled = true;
 
-  const sorted    = [...tracker.keyframes.keys()].sort((a, b) => a - b);
-  const lastFrame = sorted[sorted.length - 1];
-  const endTime   = (lastFrame + 1) / fps;
-  const chunks    = [];
-  let rafId       = null;
-  let rafActive   = false;   // hard stop flag — prevents the RAF loop outliving its cancel
+  const sorted     = [...tracker.keyframes.keys()].sort((a, b) => a - b);
+  const lastFrame  = sorted[sorted.length - 1];
+  const msPerFrame = 1000 / fps;
+  const chunks     = [];
+
+  // ── Export canvas ────────────────────────────────────────────────────────
+  // Scale down to at most 720 px on the longest edge.  Smaller canvas = smaller
+  // JPEG blobs = fast encode (~5 ms) and decode (~5 ms) — well under the
+  // 33 ms per-frame budget, so the absolute-timeline timing in Pass 2 gives
+  // perfectly uniform frame durations (= smooth, correct-speed output).
+  const MAX_EXPORT_PX = 720;
+  const exportScale   = Math.min(1, MAX_EXPORT_PX / Math.max(canvas.width, canvas.height));
+  const exportW       = Math.max(1, Math.round(canvas.width  * exportScale));
+  const exportH       = Math.max(1, Math.round(canvas.height * exportScale));
+  const exportCanvas  = Object.assign(document.createElement('canvas'),
+                                      { width: exportW, height: exportH });
+  const exportCtx     = exportCanvas.getContext('2d');
+
+  // Decode a JPEG blob to a drawable object.  createImageBitmap is async but
+  // off-thread; the result can be blitted in ~0 ms by ctx.drawImage.
+  function decodeBlob(blob) {
+    if (typeof createImageBitmap === 'function') return createImageBitmap(blob);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('blob decode failed')); };
+      img.src = url;
+    });
+  }
 
   try {
-    // Seek to the beginning before recording starts
-    await seekVideoTo(0);
+    video.pause();
+    video.loop = false;
 
-    // ── Fix 3: draw the clean first frame NOW, before the recorder captures anything ──
-    // This prevents the stale full-trace canvas from appearing at the start of the export.
-    ctx.drawImage(video, 0, 0);
+    // ── Pass 1: Seek frame-by-frame and capture each as a small JPEG blob ──
+    // Drawing happens at full resolution on the main canvas (so renderTrace
+    // works at the correct scale), then we downscale to exportCanvas before
+    // snapshotting.  This keeps JPEG file sizes small (~20–50 KB).
+    statusEl.textContent = 'Capturing frames (1/2)…';
+    const frameBlobs = [];
 
-    video.loop = false;   // ── Fix 2a: ensure video never loops during export ──
+    for (let f = 0; f <= lastFrame; f++) {
+      if (exportCancelled) break;
 
-    const stream   = canvas.captureStream(fps);
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-    recorder.onerror = e => { throw e.error ?? new Error('MediaRecorder error'); };
-    recorder.start(100);
-
-    // Let the recorder initialise (canvas already shows clean frame 0, no trace)
-    await new Promise(resolve => setTimeout(resolve, 150));
-    statusEl.textContent = 'Exporting…';
-
-    // ── Fix 2b: use rafActive flag so the loop stops the moment we set it false ──
-    rafActive = true;
-    const drawFrame = () => {
-      if (!rafActive || exportCancelled) return;
-      const f = Math.min(Math.round(video.currentTime * fps), lastFrame);
+      await seekVideoTo(f);
       ctx.drawImage(video, 0, 0);
       renderTrace(f, false);
-      const progress = video.currentTime / endTime;
-      fill.style.width  = `${Math.min(progress * 100, 100)}%`;
-      pctEl.textContent = `${Math.min(Math.round(progress * 100), 100)}%`;
-      rafId = requestAnimationFrame(drawFrame);
-    };
-    rafId = requestAnimationFrame(drawFrame);
+      // Downscale the composited frame to the export canvas
+      exportCtx.drawImage(canvas, 0, 0, exportW, exportH);
 
-    // Play the video and stop once we've passed the last marked frame
-    await new Promise((resolve, reject) => {
-      const onTimeUpdate = () => {
-        if (exportCancelled || video.currentTime >= endTime) {
-          video.removeEventListener('timeupdate', onTimeUpdate);
-          video.removeEventListener('ended', onEnded);
-          resolve();
-        }
-      };
-      const onEnded = () => {
-        video.removeEventListener('timeupdate', onTimeUpdate);
-        video.removeEventListener('ended', onEnded);
-        resolve();
-      };
-      video.addEventListener('timeupdate', onTimeUpdate);
-      video.addEventListener('ended', onEnded, { once: true });
-      video.play().catch(reject);
-    });
+      const blob = await new Promise(r => exportCanvas.toBlob(r, 'image/jpeg', 0.92));
+      if (!blob) throw new Error('canvas.toBlob returned null at frame ' + f);
+      frameBlobs.push(blob);
 
-    rafActive = false;   // stop the RAF loop before cancelling
-    video.pause();
-    cancelAnimationFrame(rafId);
-    rafId = null;
+      const pct = Math.round((f / Math.max(lastFrame, 1)) * 50);
+      fill.style.width  = `${pct}%`;
+      pctEl.textContent = `${pct}%`;
+    }
+
+    if (exportCancelled) return;
+
+    // ── Pass 2: Replay blobs into MediaRecorder at exact fps ────────────────
+    // captureStream(0) = manual mode; we call requestFrame() at the precise
+    // moment each frame should appear, on an absolute-timeline clock so every
+    // frame gets exactly msPerFrame ms regardless of blob-decode time.
+    //
+    // Lookahead: while the per-frame timer runs we decode the NEXT blob in
+    // parallel, so the draw at the top of the next iteration is synchronous.
+    statusEl.textContent = 'Encoding (2/2)…';
+
+    const stream   = exportCanvas.captureStream(0);
+    const track    = stream.getVideoTracks()[0];
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onerror = e => { throw e.error ?? new Error('MediaRecorder error'); };
+    recorder.start();
+
+    let cur      = await decodeBlob(frameBlobs[0]);
+    let nxtPromise = frameBlobs.length > 1 ? decodeBlob(frameBlobs[1]) : Promise.resolve(null);
+
+    const t0 = performance.now();
+
+    for (let i = 0; i < frameBlobs.length; i++) {
+      if (exportCancelled) break;
+
+      // cur is already decoded — this draw is synchronous (~0 ms)
+      exportCtx.drawImage(cur, 0, 0, exportW, exportH);
+      cur.close?.();          // free ImageBitmap GPU memory; no-op on Image
+      track.requestFrame?.(); // stamp into stream exactly now
+
+      const nnxtPromise = i + 2 < frameBlobs.length
+        ? decodeBlob(frameBlobs[i + 2]) : Promise.resolve(null);
+
+      const pct = Math.round(50 + (i / Math.max(frameBlobs.length - 1, 1)) * 50);
+      fill.style.width  = `${pct}%`;
+      pctEl.textContent = `${pct}%`;
+
+      // Wait until the next frame's absolute wall-clock time AND until the
+      // next blob is decoded, so the following iteration's draw is sync.
+      const waitMs = Math.max(0, t0 + (i + 1) * msPerFrame - performance.now());
+      const [, nxt] = await Promise.all([
+        new Promise(r => setTimeout(r, waitMs)),
+        nxtPromise,
+      ]);
+
+      cur        = nxt;
+      nxtPromise = nnxtPromise;
+    }
 
     if (!exportCancelled) {
-      // Hold the final frame so it is fully captured
-      ctx.drawImage(video, 0, 0);
-      renderTrace(lastFrame, false);
       fill.style.width  = '100%';
       pctEl.textContent = '100%';
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(r => setTimeout(r, 250)); // let encoder flush
     }
 
     recorder.stop();
-    await new Promise(resolve => { recorder.onstop = resolve; });
+    await new Promise(r => { recorder.onstop = r; });
 
     if (!exportCancelled) {
       const blob = new Blob(chunks, { type: mimeType });
@@ -564,8 +628,6 @@ async function exportVideo() {
       alert(`Export failed: ${err.message}`);
     }
   } finally {
-    rafActive = false;
-    if (rafId) cancelAnimationFrame(rafId);
     video.pause();
     overlay.hidden     = true;
     exportBtn.disabled = false;
