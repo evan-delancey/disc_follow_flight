@@ -7,9 +7,14 @@
   <key>teamID</key>
   <string>4KY4VKB7A5</string>
   <key>signingStyle</key>
-  <string>automatic</string>
+  <string>manual</string>
   <key>signingCertificate</key>
-  <string>Apple Distribution</string>
+  <string>Apple Distribution: Evan DeLancey (4KY4VKB7A5)</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>com.evandel.discfollowflight</key>
+    <string>DiscTrail App Store</string>
+  </dict>
   <key>uploadSymbols</key>
   <true/>
   <key>compileBitcode</key>
