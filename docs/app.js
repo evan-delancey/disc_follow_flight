@@ -109,6 +109,28 @@ let traceTaper   = 10; // -10 = narrow→wide, 0 = uniform, 10 = wide→narrow
 
 // ── Video loading ─────────────────────────────────────────────────────────────
 
+// On native iOS, use PHPickerViewController (library-only, no camera option)
+// to avoid the "Take Video" action that crashes on iPad.
+// On web, fall back to the hidden file input.
+document.getElementById('choose-video-btn').addEventListener('click', async () => {
+  if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+    try {
+      const result = await window.Capacitor.Plugins.VideoPickerPlugin.pickFromLibrary();
+      if (result && result.url) {
+        video.src = window.Capacitor.convertFileSrc(result.url);
+        video.load();
+      }
+    } catch (err) {
+      if (err && err.message !== 'cancelled') {
+        console.error('Video picker error:', err);
+      }
+    }
+  } else {
+    document.getElementById('video-input').click();
+  }
+});
+
+// Web fallback: handle file input change event
 document.getElementById('video-input').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
