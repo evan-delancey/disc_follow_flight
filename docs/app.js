@@ -459,6 +459,33 @@ function updateTopRow() {
   }
 }
 
+// ── Watermark ─────────────────────────────────────────────────────────────────
+
+function drawWatermark(ctx, w, h) {
+  const fontSize = Math.max(14, Math.round(h * 0.038));
+  ctx.save();
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  ctx.textBaseline = 'bottom';
+  ctx.shadowColor   = 'rgba(0,0,0,0.65)';
+  ctx.shadowBlur    = 6;
+  ctx.shadowOffsetX = 1;
+  ctx.shadowOffsetY = 1;
+
+  const pad        = Math.round(fontSize * 0.6);
+  const discWidth  = ctx.measureText('Disc').width;
+  const trailWidth = ctx.measureText('Trail').width;
+  const x = w - pad - discWidth - trailWidth;
+  const y = h - pad;
+
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fillText('Disc', x, y);
+
+  ctx.fillStyle = '#F97316';
+  ctx.fillText('Trail', x + discWidth, y);
+
+  ctx.restore();
+}
+
 // ── Video export ──────────────────────────────────────────────────────────────
 
 let exportCancelled = false;
@@ -570,6 +597,7 @@ async function exportVideo() {
       renderTrace(f, false);
       // Downscale the composited frame to the export canvas
       exportCtx.drawImage(canvas, 0, 0, exportW, exportH);
+      drawWatermark(exportCtx, exportW, exportH);
 
       const blob = await new Promise(r => exportCanvas.toBlob(r, 'image/jpeg', 0.92));
       if (!blob) throw new Error('canvas.toBlob returned null at frame ' + f);
