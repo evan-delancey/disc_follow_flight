@@ -107,6 +107,66 @@ let traceWidth   = 12;
 let traceOpacity = 1.0;
 let traceTaper   = 10; // -10 = narrow→wide, 0 = uniform, 10 = wide→narrow
 
+// ── Subscription / export gate ────────────────────────────────────────────────
+
+const FREE_EXPORT_LIMIT = 10;
+
+function getExportCount() {
+  return parseInt(localStorage.getItem('dtExportCount') || '0', 10);
+}
+function incrementExportCount() {
+  localStorage.setItem('dtExportCount', getExportCount() + 1);
+}
+
+async function isSubscribed() {
+  // On web (dev/testing) never gate
+  if (!window.Capacitor || !window.Capacitor.isNativePlatform()) return true;
+  try {
+    const r = await window.Capacitor.Plugins.StoreKit2Plugin.getSubscriptionStatus();
+    return !!r.active;
+  } catch { return false; }
+}
+
+async function canExport() {
+  if (getExportCount() < FREE_EXPORT_LIMIT) return true;
+  return await isSubscribed();
+}
+
+// Paywall show/hide
+function showPaywall() { document.getElementById('paywall-overlay').hidden = false; }
+function hidePaywall()  { document.getElementById('paywall-overlay').hidden = true;  }
+
+document.getElementById('btn-paywall-close').addEventListener('click', hidePaywall);
+
+document.getElementById('btn-subscribe').addEventListener('click', async () => {
+  try {
+    const r = await window.Capacitor.Plugins.StoreKit2Plugin.purchase();
+    if (r.success) {
+      hidePaywall();
+      exportVideo(); // proceed with the export they tried to start
+    } else if (r.pending) {
+      alert('Purchase is pending approval. Export will unlock once approved.');
+      hidePaywall();
+    }
+  } catch (err) {
+    if (err.message !== 'cancelled') alert('Purchase failed: ' + err.message);
+  }
+});
+
+document.getElementById('btn-restore').addEventListener('click', async () => {
+  try {
+    await window.Capacitor.Plugins.StoreKit2Plugin.restorePurchases();
+    if (await isSubscribed()) {
+      hidePaywall();
+      exportVideo();
+    } else {
+      alert('No active subscription found on this Apple ID.');
+    }
+  } catch (err) {
+    alert('Restore failed: ' + err.message);
+  }
+});
+
 // ── Video loading ─────────────────────────────────────────────────────────────
 
 // On native iOS, use PHPickerViewController (library-only, no camera option)
@@ -393,9 +453,11 @@ function setExportReady(ex) {
 
 exportBtn.addEventListener('click', async () => {
   if (lastExport) {
-    // Called from a fresh tap — iOS will honour the user gesture
+    // Re-share an already-exported video — always free
     await doShare(lastExport.blob, lastExport.fileName, lastExport.mimeType);
   } else {
+    // Gate: check free limit and subscription before starting a new export
+    if (!(await canExport())) { showPaywall(); return; }
     await exportVideo();
   }
 });
@@ -670,6 +732,7 @@ async function exportVideo() {
     if (!exportCancelled) {
       const blob = new Blob(chunks, { type: mimeType });
       setExportReady({ blob, fileName, mimeType });
+      incrementExportCount(); // count only successful exports
     }
 
   } catch (err) {

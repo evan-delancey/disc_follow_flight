@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="theme-color" content="#111">
   <title>DiscTrail</title>
-  <link rel="stylesheet" href="style.css?v=20260614">
+  <link rel="stylesheet" href="style.css?v=20260615">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -99,6 +99,37 @@
     </div>
   </div>
 
+  <!-- Paywall overlay -->
+  <div id="paywall-overlay" hidden>
+    <div id="paywall-card">
+      <button id="btn-paywall-close" aria-label="Close">✕</button>
+      <div class="paywall-icon">
+        <svg viewBox="0 0 64 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="52" height="42">
+          <path d="M4 38 C16 18 32 13 48 24" stroke="#F97316" stroke-width="5" stroke-linecap="round" opacity="0.35"/>
+          <ellipse cx="48" cy="27" rx="13" ry="6" fill="#F97316"/>
+          <ellipse cx="47" cy="25" rx="7" ry="2.8" fill="white" opacity="0.28"/>
+        </svg>
+      </div>
+      <h2 class="paywall-title">Disc<span class="brand-accent">Trail</span> Premium</h2>
+      <p class="paywall-used">You've used all 10 free exports.</p>
+      <ul class="paywall-features">
+        <li>✓ Unlimited video exports</li>
+        <li>✓ DiscTrail watermark on every export</li>
+      </ul>
+      <div class="paywall-price-box">
+        <span class="paywall-trial">1 month free</span>
+        <span class="paywall-then">then $2.99 / month</span>
+      </div>
+      <button class="action-btn export" id="btn-subscribe">Start Free Month</button>
+      <button class="paywall-restore" id="btn-restore">Restore Purchases</button>
+      <p class="paywall-legal">
+        Subscription auto-renews at $2.99/month after the free trial. Cancel anytime in
+        iPhone Settings → Subscriptions.
+        <a href="https://evan-delancey.github.io/disc_follow_flight/privacy-policy.html" target="_blank">Privacy Policy</a>
+      </p>
+    </div>
+  </div>
+
   <!-- Export progress overlay -->
   <div id="export-overlay" hidden>
     <div id="export-card">
@@ -123,6 +154,6 @@
     <line x1="58" y1="40" x2="76" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/>
   </svg>
 
-  <script src="app.js?v=20260614"></script>
+  <script src="app.js?v=20260615"></script>
 </body>
 </html>
