@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Disc Follow Flight</string>
+        <string>DiscTrail</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -49,9 +49,9 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Disc Follow Flight needs access to your photo library to save traced flight path images and videos.</string>
+	<string>DiscTrail needs access to your photo library to pick videos and save traced flight path images.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Disc Follow Flight saves your traced flight path images and videos to your photo library.</string>
+	<string>DiscTrail saves your traced flight path images and videos to your photo library.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>
