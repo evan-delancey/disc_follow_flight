@@ -58,12 +58,9 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/App.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_API_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGNING_IDENTITY="Apple Distribution: Evan DeLancey (4KY4VKB7A5)" \
+            PROVISIONING_PROFILE_SPECIFIER="DiscTrail App Store" \
             DEVELOPMENT_TEAM=4KY4VKB7A5 \
             CURRENT_PROJECT_VERSION=5 \
             MARKETING_VERSION=1.0
