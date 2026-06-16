@@ -22,4 +22,13 @@ end
 
 post_install do |installer|
   assertDeploymentTarget(installer)
+  # Disable code signing for all Pods targets so CI manual signing works.
+  # Pods don't need their own provisioning profiles for an App Store archive.
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+      config.build_settings['CODE_SIGN_IDENTITY'] = ''
+    end
+  end
 end
