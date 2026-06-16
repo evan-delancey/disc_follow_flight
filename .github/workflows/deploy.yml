@@ -63,6 +63,7 @@ jobs:
             -authenticationKeyID ${{ secrets.ASC_API_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
             CODE_SIGN_STYLE=Automatic \
+            CODE_SIGNING_IDENTITY="Apple Distribution: Evan DeLancey (4KY4VKB7A5)" \
             DEVELOPMENT_TEAM=4KY4VKB7A5 \
             CURRENT_PROJECT_VERSION=5 \
             MARKETING_VERSION=1.0
